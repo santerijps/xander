@@ -55,7 +55,7 @@ By having a ```layout.html``` template one can define a base layout for their pa
   </body>
 </html>
 ```
-In the examle above, ```{[title]}``` is a user defined variable, whereas {[%content%]} is a Xander defined variable, that contains the contents of a template file.
+In the example above, ```{[title]}``` is a user defined variable, whereas ```{[%content%]}``` is a Xander defined variable, that contains the contents of a template file.
 
 ### User-defined variables
 Xander provides a custom type ```Vars```, which is shorthand for ```Table[string, string]```. To initialize it, one must use the ```newVars()``` proc. In the initialized variable, one can add key-value pairs
@@ -72,7 +72,10 @@ In a template, one must define the variables with matching names
 ## Dynamic routes
 To match a custom route and get the provided value(s), one must simply use a colon to specify a dynamic value. The values will be stored in the ```vars``` parameter.
 ```nim
+# User requests /countries/ireland/people/paddy
 get("/countries/:country/people/:person", proc(req: Request, vars: Vars) {.async.} =  
+  # vars["country"] == "ireland"
+  # vars["person"] == "paddy"
   await req.display("userPage", vars)
 )
 ```
