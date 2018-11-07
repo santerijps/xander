@@ -15,22 +15,37 @@ startServer()
 ```
 More examples can be found in the ```examples``` folder.
 
+## Getting started with xandercli (coming soon)
+1. Move to directory you want to create your project
+2. In the command line, type ```xander new my-first-app```
+3. ```$ cd my-first-app```
+4. To run your app, type ```xander run``` in the command line
+
 ## Project structure
 The default folder structure is the following:
 ```
-Root
+Project root folder
+  app
+    controllers
+    models
+    views
+      layout.html
+      index.html
+  bin
   public
     css
-    html
+      bootstrap.min.css
+      ...
     js
-  main.nim
+      bootstrap.min.js
+      ...
+  app.nim
   ...
 ```
-The public folder can be altered by changing the Xander variable in your project file
+The public folder can be altered by calling the Xander methods
 ```nim
-Xander.publicDir = "./myPublicFiles/"
+xander.setStaticDir("new dir")
 ```
-In the future, I will be looking into having MVC be the default project structure.
 
 ## Templates
 Xander provides support for templates, although it is very much a work in progress and for example *does not* support including files.
@@ -39,9 +54,9 @@ To serve a template file:
 # Serve the index page
 await req.display("index")
 ```
-The default folder for templates is the ```public/html``` folder, but it can also be changed by altering the variable
+The default folder for templates is the ```app/views``` folder, but it can also be changed by calling
 ```nim
-Xander.templateDir = "./public/mytemplates/"
+xander.setTemplateDir("new dir")
 ```
 By having a ```layout.html``` template one can define a base layout for their pages.
 ```html

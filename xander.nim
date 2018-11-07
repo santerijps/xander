@@ -28,6 +28,7 @@ var # Define globals
   publicDir {.threadvar.}: string
   templateDir {.threadvar.}: string
   routes {.threadvar.}: Table[HttpMethod, Table[string, proc(req: http.Request, vars: Vars): Future[void]]]
+  statics {.threadvar.}: Vars
 
 # global initializations
 server = http.newAsyncHttpServer()
@@ -38,6 +39,7 @@ port = 3000
 projectDir = os.getAppDir().parentDir()
 publicDir = projectDir & "/public/"
 templateDir = projectDir & "/app/views/"
+statics = newVars()
 
 proc initTemplates(root: string) =
   for filepath in os.walkFiles(root & "*"):
@@ -59,11 +61,14 @@ proc getTemplate*(name: string): string =
     result = html[name]
 
 proc serve404(req: http.Request) {.async.} =
-  var vars = newVars()
-  vars["title"] = "Error"
-  vars["code"] = "404"
-  vars["message"] = "Not found."
-  await req.respond(Http404, buildPage("error", vars))
+  var page: string = "404 page not found"
+  if html.hasKey("error"):
+    var vars = newVars()
+    vars["title"] = "Error"
+    vars["code"] = "404"
+    vars["message"] = "Not found."
+    page = buildPage("error", vars)
+  await req.respond(Http404, page)
 
 proc getJsonData(keys: OrderedTable[string, JsonNode], node: JsonNode): Vars = 
   result = newVars()
@@ -151,10 +156,11 @@ setControlCHook(proc() {.noconv.} = quit(0))
 
 proc initStatics(root: string) =
   for file in os.walkFiles(root & "*"):
-    var f = "/" & (file.replace(publicDir, ""))
-    get(f, proc(req: http.Request, vars: Vars): Future[void] {.async.} = 
-      await req.respond(Http200, open(file, fmRead).readAll())
-    )
+    var 
+      f = "/" & (file.replace(publicDir, ""))
+      fp = f.parentDir() & "/"
+    statics[fp & f.extractFilename()] = open(file, fmRead).readAll()
+    get(fp & ":file", (r, v) => r.respond(Http200, statics[fp & v["file"]]))
   for dir in os.walkDirs(root & "*"):
     initStatics(dir & "/")
 
