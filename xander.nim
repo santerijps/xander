@@ -1,7 +1,8 @@
 import
   asyncdispatch as async,
   asynchttpserver as http,
-  os, strutils, tables, re, json, sugar
+  os, strutils, tables, re, json, sugar,
+  xandercli
 
 export
   async,
@@ -19,31 +20,43 @@ type
 proc newVars*(): Vars = initTable[string, string]()
 
 var # Define globals
-  server: AsyncHttpServer
+  server {.threadvar.}: AsyncHttpServer
   html {.threadvar.}: Vars
   mode* {.threadvar.}: APP_MODE
   port* {.threadvar.}: uint
-  publicDir* {.threadvar.}: string
-  templateDir* {.threadvar.}: string
+  projectDir {.threadvar.}: string
+  publicDir {.threadvar.}: string
+  templateDir {.threadvar.}: string
   routes {.threadvar.}: Table[HttpMethod, Table[string, proc(req: http.Request, vars: Vars): Future[void]]]
 
-# Initialize globals
+# global initializations
 server = http.newAsyncHttpServer()
 html = initTable[string ,string]()
+routes = initTable[HttpMethod, Table[string, proc(req: http.Request, vars: Vars): Future[void]]]()
 mode = APP_MODE.DEBUG
 port = 3000
-publicDir = "./public/"
-templateDir = "./public/html/"
-routes = initTable[HttpMethod, Table[string, proc(req: http.Request, vars: Vars): Future[void]]]()
+projectDir = os.getAppDir().parentDir()
+publicDir = projectDir & "/public/"
+templateDir = projectDir & "/app/views/"
 
-proc initTemplates() =
-  for filepath in os.walkFiles(templateDir & "*"):
+proc initTemplates(root: string) =
+  for filepath in os.walkFiles(root & "*"):
     html[filepath.splitFile().name] = open(filepath, fmRead).readAll()
+  for dir in os.walkDirs(root & "*"):
+    initTemplates(dir & "/")
+
+proc putVars(page: string, vars: Vars): string =
+  result = page
+  for key in vars.keys:
+    result = result.replace("{[" & key & "]}", vars[key])
 
 proc buildPage(page: string, vars: Vars): string =
   result = html["layout"].replace("{[%content%]}", html[page])
-  for key in vars.keys:
-    result = result.replace("{[" & key & "]}", vars[key])
+  result = putVars(result, vars)
+
+proc getTemplate*(name: string): string =
+  if html.hasKey(name):
+    result = html[name]
 
 proc serve404(req: http.Request) {.async.} =
   var vars = newVars()
@@ -124,6 +137,16 @@ proc display*(req: http.Request, templ: string, vars: Vars = newVars(), code: Ht
 proc respond*(req: http.Request, body: string, code: HttpCode = Http200) {.async.} =
   await req.respond(code, body)
 
+proc setPublicDir*(dir: string) = 
+  publicDir = dir
+  if publicDir[publicDir.len - 1] != '/':
+    publicDir = publicDir & '/'
+
+proc setTemplateDir*(dir: string) =
+  templateDir = dir
+  if templateDir[templateDir.len - 1] != '/':
+    templateDir = templateDir & '/'
+
 setControlCHook(proc() {.noconv.} = quit(0))
 
 proc initStatics(root: string) =
@@ -136,19 +159,18 @@ proc initStatics(root: string) =
     initStatics(dir & "/")
 
 proc init() =
-  if publicDir[publicDir.len - 1] != '/':
-    publicDir = publicDir & '/'
-  if templateDir[templateDir.len - 1] != '/':
-    templateDir = templateDir & '/'
   initStatics(publicDir)
-  initTemplates()
+  initTemplates(templateDir)
 
 proc requestHandler(req: http.Request) {.async.} =
   if mode == APP_MODE.DEBUG:
     init()
   await checkRoutes(req)
 
-proc startServer*(message: string = "Server is running!") =
+proc startServer*() =
   init()
-  echo message
+  echo "Server listening on port ", port
   async.waitFor server.serve(async.Port(port), requestHandler)
+
+when isMainModule:
+  xandercli.runXander()
