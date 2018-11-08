@@ -49,7 +49,12 @@ proc setMode*(m: APP_MODE) =
 
 proc initTemplates(root: string) =
   for filepath in os.walkFiles(root & "*"):
-    html[filepath.splitFile().name] = open(filepath, fmRead).readAll()
+    var file: File
+    if open(file, filepath, fmRead):
+      html[filepath.splitFile().name] = file.readAll()
+      file.close()
+    else:
+      echo "Could not read template ", filepath
   for dir in os.walkDirs(root & "*"):
     initTemplates(dir & "/")
 
@@ -166,10 +171,15 @@ setControlCHook(proc() {.noconv.} = quit(0))
 proc initStatics(root: string) =
   for file in os.walkFiles(root & "*"):
     var 
-      f = "/" & (file.replace(publicDir, ""))
-      fp = f.parentDir() & "/"
-    statics[fp & f.extractFilename()] = open(file, fmRead).readAll()
-    get(fp & ":file", (r, v) => r.respond(Http200, statics[fp & v["file"]]))
+      fr = "/" & (file.replace(publicDir, "")) # relative file path
+      fp = fr.parentDir() & "/" # file's parent dir
+      f: File
+    if open(f, file, fmRead):
+      statics[fp & fr.extractFilename()] = f.readAll()
+      get(fp & ":file", (r, v) => r.respond(Http200, statics[fp & v["file"]]))
+      f.close()
+    else:
+      echo "Could not read static file ", file
   for dir in os.walkDirs(root & "*"):
     initStatics(dir & "/")
 

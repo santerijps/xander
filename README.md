@@ -98,3 +98,8 @@ get("/countries/:country/people/:person", proc(req: Request, vars: Vars) {.async
 ```html
 <h1>{[person]} is from {[country]}</h1>
 ```
+
+## TODO
+1. Error checking / handling
+2. Code refactoring
+3. Seperating different tasks to different files(???)
