@@ -67,10 +67,11 @@ By having a ```layout.html``` template one can define a base layout for their pa
   </head>
   <body>
     {[%content%]}
+    {[template footer]}
   </body>
 </html>
 ```
-In the example above, ```{[title]}``` is a user defined variable, whereas ```{[%content%]}``` is a Xander defined variable, that contains the contents of a template file.
+In the example above, ```{[title]}``` is a user defined variable, whereas ```{[%content%]}``` is a Xander defined variable, that contains the contents of a template file. To include your own templates, use the ```template``` keyword ```{[template my-template]}```.
 
 ### User-defined variables
 Xander provides a custom type ```Vars```, which is shorthand for ```Table[string, string]```. To initialize it, one must use the ```newVars()``` proc. In the initialized variable, one can add key-value pairs

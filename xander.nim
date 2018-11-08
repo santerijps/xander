@@ -1,7 +1,7 @@
 import
   asyncdispatch as async,
   asynchttpserver as http,
-  os, strutils, tables, re, json, sugar,
+  os, strutils, tables, regex, json, sugar,
   xandercli
 
 export
@@ -22,8 +22,8 @@ proc newVars*(): Vars = initTable[string, string]()
 var # Define globals
   server {.threadvar.}: AsyncHttpServer
   html {.threadvar.}: Vars
-  mode* {.threadvar.}: APP_MODE
-  port* {.threadvar.}: uint
+  mode {.threadvar.}: APP_MODE
+  port {.threadvar.}: uint
   projectDir {.threadvar.}: string
   publicDir {.threadvar.}: string
   templateDir {.threadvar.}: string
@@ -41,24 +41,33 @@ publicDir = projectDir & "/public/"
 templateDir = projectDir & "/app/views/"
 statics = newVars()
 
+proc setPort*(p: uint) =
+  port = p
+
+proc setMode*(m: APP_MODE) =
+  mode = m
+
 proc initTemplates(root: string) =
   for filepath in os.walkFiles(root & "*"):
     html[filepath.splitFile().name] = open(filepath, fmRead).readAll()
   for dir in os.walkDirs(root & "*"):
     initTemplates(dir & "/")
 
+proc getTemplate*(name: string): string =
+  if html.hasKey(name):
+    result = html[name]
+
 proc putVars(page: string, vars: Vars): string =
   result = page
   for key in vars.keys:
     result = result.replace("{[" & key & "]}", vars[key])
+  for m in findAndCaptureAll(result, re"\{\[template\s\w*\-?\w*\]\}"):
+    var templ = m.substr(2, m.len - 3).split(" ")[1]
+    result = result.replace(m, getTemplate(templ).putVars(vars))
 
 proc buildPage(page: string, vars: Vars): string =
   result = html["layout"].replace("{[%content%]}", html[page])
   result = putVars(result, vars)
-
-proc getTemplate*(name: string): string =
-  if html.hasKey(name):
-    result = html[name]
 
 proc serve404(req: http.Request) {.async.} =
   var page: string = "404 page not found"
