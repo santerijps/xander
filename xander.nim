@@ -152,12 +152,12 @@ proc respond*(req: http.Request, body: string, code: HttpCode = Http200) {.async
   await req.respond(code, body)
 
 proc setPublicDir*(dir: string) = 
-  publicDir = dir
+  publicDir = projectDir & dir
   if publicDir[publicDir.len - 1] != '/':
     publicDir = publicDir & '/'
 
 proc setTemplateDir*(dir: string) =
-  templateDir = dir
+  templateDir = projectDir & dir
   if templateDir[templateDir.len - 1] != '/':
     templateDir = templateDir & '/'
 
