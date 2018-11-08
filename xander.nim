@@ -80,7 +80,7 @@ proc serve404(req: http.Request) {.async.} =
     var vars = newVars()
     vars["title"] = "Error"
     vars["code"] = "404"
-    vars["message"] = "Not found."
+    vars["message"] = "Page not found"
     page = buildPage("error", vars)
   await req.respond(Http404, page)
 
@@ -122,7 +122,8 @@ proc checkPath(req: http.Request, kind: string, vars: var Vars): bool =
     else: # Request body
       if req.url.path == kind:
         result = true
-        vars = parseRequestBody(req.body)
+        if req.body.len > 0:
+          vars = parseRequestBody(req.body)
   
 proc checkRoutes(req: http.Request) {.async.} =
   var vars: Vars

@@ -103,3 +103,4 @@ get("/countries/:country/people/:person", proc(req: Request, vars: Vars) {.async
 1. Error checking / handling
 2. Code refactoring
 3. Seperating different tasks to different files(???)
+4. Template logic (e.g. loops)
