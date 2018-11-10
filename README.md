@@ -5,11 +5,11 @@ A basic example:
 ```nim
 import ../Xander
 
-get("/", (r, v) => r.respond("The index page"))
+get("/", proc(req: Request, vars: var Data): Response =
+  display("Index"))
 
-get("/about", proc(req: Request, vars: Data) {.async.} = 
-  await req.respond("This is the very basic example")
-)
+get("/about", proc(req: Request, vars: var Data): Response = 
+  display("This is the very basic example"))
 
 startServer()
 ```
@@ -52,7 +52,7 @@ Xander provides support for templates, although it is very much a work in progre
 To serve a template file:
 ```nim
 # Serve the index page
-await req.display("index")
+displayTemplate("index")
 ```
 The default folder for templates is the ```app/views``` folder, but it can also be changed by calling
 ```nim
@@ -92,10 +92,10 @@ In a template, one must define the variables with matching names
 To match a custom route and get the provided value(s), one must simply use a colon to specify a dynamic value. The values will be stored in the ```vars``` parameter.
 ```nim
 # User requests /countries/ireland/people/paddy
-get("/countries/:country/people/:person", proc(req: Request, vars: Data) {.async.} =  
+get("/countries/:country/people/:person", proc(req: Request, vars: var Data): Response =  
   # vars["country"] == "ireland"
   # vars["person"] == "paddy"
-  await req.display("userPage", vars)
+  displayTemplate("userPage", vars)
 )
 ```
 ```html

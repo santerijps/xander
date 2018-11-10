@@ -12,7 +12,7 @@ export
   sugar
 
 type # Custom types
-  APP_MODE* = enum DEBUG, PROD
+  ApplicationMode* = enum Debug, Production
   Dictionary* = Table[string, string]
   HandlerProc* = proc(req: http.Request, vars: var Data): Response
   Route = Table[string, HandlerProc]
@@ -34,7 +34,7 @@ func `[]=`*[T](node: var Data, key: string, value: T) = node.add(key, %value)
 var # Define globals
   server {.threadvar.}: AsyncHttpServer
   html {.threadvar.}: Dictionary
-  mode {.threadvar.}: APP_MODE
+  mode {.threadvar.}: ApplicationMode
   port {.threadvar.}: uint
   projectDir {.threadvar.}: string
   publicDir {.threadvar.}: string
@@ -46,7 +46,7 @@ var # Define globals
 server = http.newAsyncHttpServer()
 html = newDictionary()
 routes = newRoutingTable()
-mode = APP_MODE.DEBUG
+mode = ApplicationMode.Debug
 port = 3000
 projectDir = os.getAppDir().parentDir()
 publicDir = projectDir & "/public/"
@@ -56,7 +56,7 @@ statics = newDictionary()
 proc setPort*(p: uint) =
   port = p
 
-proc setMode*(m: APP_MODE) =
+proc setMode*(m: ApplicationMode) =
   mode = m
 
 proc initTemplates(root: string) =
@@ -212,7 +212,7 @@ proc init() =
   initTemplates(templateDir)
 
 proc requestHandler(req: http.Request) {.async.} =
-  if mode == APP_MODE.DEBUG:
+  if mode == ApplicationMode.Debug:
     init()
   await checkRoutes(req)
 
