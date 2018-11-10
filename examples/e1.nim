@@ -1,9 +1,9 @@
-import ../Xander
+import ../xander
 
-get("/", (r, v) => r.respond("The index page"))
+get("/", proc(req: Request, vars: var Data): Response =
+  display("The Index"))
 
-get("/about", proc(req: Request, vars: Vars) {.async.} = 
-  await req.respond("This is the very basic example")
-)
+get("/about", proc(req: Request, vars: var Data): Response = 
+  display("This is the very basic example"))
 
 startServer()
