@@ -7,7 +7,7 @@ import ../Xander
 
 get("/", (r, v) => r.respond("The index page"))
 
-get("/about", proc(req: Request, vars: Vars) {.async.} = 
+get("/about", proc(req: Request, vars: Data) {.async.} = 
   await req.respond("This is the very basic example")
 )
 
@@ -74,11 +74,14 @@ By having a ```layout.html``` template one can define a base layout for their pa
 In the example above, ```{[title]}``` is a user defined variable, whereas ```{[%content%]}``` is a Xander defined variable, that contains the contents of a template file. To include your own templates, use the ```template``` keyword ```{[template my-template]}```. You can also include templates that themselves include other templates.
 
 ### User-defined variables
-Xander provides a custom type ```Vars```, which is shorthand for ```Table[string, string]```. To initialize it, one must use the ```newVars()``` proc. In the initialized variable, one can add key-value pairs
+Xander provides a custom type ```Data```, which is shorthand for ```JsonNode```, and it also adds some functions to make life easier. To initialize it, one must use the ```newData()``` func. In the initialized variable, one can add key-value pairs
 ```nim
-var vars = newVars()
+var vars = newData()
 vars["name"] = "Alice"
-vars["age"] = "21"
+vars["age"] = 21
+
+# or you can initialize it with a pair
+var vars = newData("name", "Alice")
 ```
 In a template, one must define the variables with matching names
 ```html
@@ -89,7 +92,7 @@ In a template, one must define the variables with matching names
 To match a custom route and get the provided value(s), one must simply use a colon to specify a dynamic value. The values will be stored in the ```vars``` parameter.
 ```nim
 # User requests /countries/ireland/people/paddy
-get("/countries/:country/people/:person", proc(req: Request, vars: Vars) {.async.} =  
+get("/countries/:country/people/:person", proc(req: Request, vars: Data) {.async.} =  
   # vars["country"] == "ireland"
   # vars["person"] == "paddy"
   await req.display("userPage", vars)
@@ -104,3 +107,5 @@ get("/countries/:country/people/:person", proc(req: Request, vars: Vars) {.async
 2. Code refactoring
 3. Seperating different tasks to different files(???)
 4. Template logic (e.g. loops)
+5. Sockets
+6. Make HandlerProcs synchronous that return the page with filled data to the request handler(???)
