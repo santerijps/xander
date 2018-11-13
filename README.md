@@ -108,4 +108,4 @@ get("/countries/:country/people/:person", proc(req: Request, vars: var Data): Re
 3. Seperating different tasks to different files(???)
 4. Template logic (e.g. loops)
 5. Sockets
-6. Make HandlerProcs synchronous that return the page with filled data to the request handler(???)
+6. Initialize Web Server with sockets (e.g. "startServer(socketServer)")

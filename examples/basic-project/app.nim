@@ -3,7 +3,7 @@ import
   app/controllers/controller
 
 xander.setPort(3000)
-xander.setMode(APP_MODE.DEBUG)
+xander.setMode(ApplicationMode.Debug)
 
 get("/", controller.serveIndexPage)
 

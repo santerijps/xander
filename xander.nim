@@ -1,4 +1,5 @@
 import
+  asyncnet,
   asyncdispatch as async,
   asynchttpserver as http,
   os, strutils, tables, regex, json, sugar, typetraits,
@@ -53,11 +54,8 @@ publicDir = projectDir & "/public/"
 templateDir = projectDir & "/app/views/"
 statics = newDictionary()
 
-proc setPort*(p: uint) =
-  port = p
-
-proc setMode*(m: ApplicationMode) =
-  mode = m
+proc setPort*(p: uint) = port = p
+proc setMode*(m: ApplicationMode) = mode = m
 
 proc initTemplates(root: string) =
   for filepath in os.walkFiles(root & "*"):
@@ -218,7 +216,7 @@ proc requestHandler(req: http.Request) {.async.} =
 
 proc startServer*() =
   init()
-  echo "Server listening on port ", port
+  echo "Web server listening on port ", port
   async.waitFor server.serve(async.Port(port), requestHandler)
 
 when isMainModule:

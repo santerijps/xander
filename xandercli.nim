@@ -28,7 +28,7 @@ proc runApp() =
   var 
     appNim = os.getCurrentDir() & "/app.nim"
     appExe = os.getCurrentDir() & "/bin/www"
-    cmd = "nim c -r --out:" & appExe & " --hints:off --verbosity:0 "
+    cmd = "nim c -r --out:" & appExe & " --hints:off --verbosity:0 --threads:on "
   if os.fileExists(appNim):
     discard os.execShellCmd(cmd & appNim)
 
