@@ -5,11 +5,11 @@ A basic example:
 ```nim
 import ../Xander
 
-get("/", proc(req: Request, vars: var Data): Response =
-  display("Index"))
+get "/":
+  display("index")
 
-get("/about", proc(req: Request, vars: var Data): Response = 
-  display("This is the very basic example"))
+get "/about": 
+  display("This is the very basic example")
 
 startServer()
 ```

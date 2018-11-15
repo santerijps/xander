@@ -8,11 +8,9 @@ get("/", proc(req: Request, vars: var Data): Response =
 var clients {.threadvar.}: seq[Client]
 
 proc connectionHandler(socket: AsyncSocket): Future[Client] {.async.} =
-  #await socket.send("Please enter your name:")
-  discard await socket.recvLine()
   var client: Client = (socket, await socket.recvLine(), true)
   clients.add(client)
-  echo clients
+  echo client.name
   return client
 
 proc lineHandler(client: Client, line: string): Future[bool] {.async.} =

@@ -54,3 +54,10 @@ proc startSocket*(init: InitHandler) =
   discard init()
   asyncCheck serve()
   runForever()
+
+proc onSigInt() {.noconv.} = 
+  if not isClosed(server):
+    close(server)
+  quit(0)
+
+setControlCHook(onSigInt)

@@ -2,7 +2,7 @@ import
   asyncnet,
   asyncdispatch as async,
   asynchttpserver as http,
-  os, strutils, tables, regex, json, sugar, typetraits,
+  os, strutils, tables, regex, json, sugar, typetraits, strformat, macros,
   xandercli
 
 export
@@ -68,9 +68,12 @@ proc initTemplates(root: string) =
   for dir in os.walkDirs(root & "*"):
     initTemplates(dir & "/")
 
-proc getTemplate*(name: string): string =
-  if html.hasKey(name):
-    result = html[name]
+proc templateExists(tmplt: string): bool = 
+  html.hasKey(tmplt)
+
+proc getTemplate*(tmplt: string): string =
+  if templateExists(tmplt):
+    result = html[tmplt]
 
 proc putVars(page: string, vars: Data): string =
   result = page
@@ -80,19 +83,22 @@ proc putVars(page: string, vars: Data): string =
     var templ = m.substr(2, m.len - 3).split(" ")[1]
     result = result.replace(m, getTemplate(templ).putVars(vars))
 
-proc buildPage(page: string, vars: Data): string =
-  if html.hasKey("layout"):
-    result = html["layout"].replace("{[%content%]}", html[page])
-  else: result = html[page]
-  result = putVars(result, vars)
+proc buildPage(tmplt: string, vars: Data): string =
+  if templateExists(tmplt):
+    if templateExists("layout"):
+      result = html["layout"].replace("{[%content%]}", html[tmplt])
+    else: result = html[tmplt]
+    result = putVars(result, vars)
+  else:
+    echo "Error! Template does not exist: ", tmplt
 
 proc serve404(req: http.Request) {.async.} =
   var page: string = "404 page not found"
-  if html.hasKey("error"):
-    var vars = newJObject()
-    vars.add("title", newJString("Error"))
-    vars.add("code", newJString("404"))
-    vars.add("message", newJString("Page not found"))
+  if templateExists("error"):
+    var vars = newData()
+    vars["title"] = "Error"
+    vars["code"] = 404
+    vars["message"] = "Page not found"
     page = buildPage("error", vars)
   await req.respond(Http404, page)
 
@@ -116,7 +122,6 @@ proc isValidGetPath(url, kind: string, params: var Data): bool =
   if url.len == klen:
     for i in 0..klen-1:
       if ":" in kind[i]:
-        #params{kind[i][1..kind[i].len-1]} = newJString(url[i])
         params[kind[i][1 .. kind[i].len - 1]] = url[i]
       elif kind[i] != url[i]:
         result = false
@@ -153,17 +158,36 @@ proc addRoute(httpMethod: HttpMethod, path: string, handler: HandlerProc) =
     routes[httpMethod] = newRoute()
   routes[httpMethod][path] = handler
 
-proc get*(path: string, handler: HandlerProc) =
+proc addGet*(path: string, handler: HandlerProc) =
   addRoute(HttpMethod.HttpGet, path, handler)
 
-proc post*(path: string, handler: HandlerProc) =
+proc addPost*(path: string, handler: HandlerProc) =
   addRoute(HttpMethod.HttpPost, path, handler)
 
-proc delete*(path: string, handler: HandlerProc) =
+proc addDelete*(path: string, handler: HandlerProc) =
   addRoute(HttpMethod.HttpDelete, path, handler)
   
-proc put*(path: string, handler: HandlerProc) =
+proc addPut*(path: string, handler: HandlerProc) =
   addRoute(HttpMethod.HttpPut, path, handler)
+
+proc buildRequestHandlerSource(reqMethod, route: string, body: untyped): string =
+  var source = &"add{reqMethod}(\"{route}\", proc(req: Request, vars: var Data): Response =\n"
+  for row in repr(body).split("\n"):
+    if row.len > 0:
+      source &= &"  {row}\n"
+  return source & ")"
+
+macro get*(route: string, body: untyped): typed =
+  parseStmt(buildRequestHandlerSource("Get", repr(route).replace("\"", ""), body))
+
+macro post*(route: string, body: untyped): typed =
+  parseStmt(buildRequestHandlerSource("Post", repr(route).replace("\"", ""), body))
+
+macro delete*(route: string, body: untyped): typed =
+  parseStmt(buildRequestHandlerSource("Delete", repr(route).replace("\"", ""), body))
+
+macro put*(route: string, body: untyped): typed =
+  parseStmt(buildRequestHandlerSource("Put", repr(route).replace("\"", ""), body))
 
 proc display*(text: string, code: HttpCode = Http200): Response =
   return (text, code)
@@ -197,7 +221,7 @@ proc initStatics(root: string) =
       f: File
     if open(f, file, fmRead):
       statics[fp & fr.extractFilename()] = f.readAll()
-      get(fp & ":file", proc(req: http.Request, vars: var Data): Response =
+      addGet(fp & ":file", proc(req: http.Request, vars: var Data): Response =
         return (statics[fp & vars["file"].getStr()], Http200))
       f.close()
     else:
@@ -216,6 +240,7 @@ proc requestHandler(req: http.Request) {.async.} =
 
 proc startServer*() =
   init()
+  defer: close(server)
   echo "Web server listening on port ", port
   async.waitFor server.serve(async.Port(port), requestHandler)
 

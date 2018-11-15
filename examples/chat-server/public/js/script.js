@@ -1,4 +1,4 @@
-(function() {
+/*(function() {
 
   let nickname
   let socket
@@ -20,4 +20,13 @@
     
   }
 
+})()*/
+
+(function() {
+  if(!window.WebSocket) return
+  socket = new WebSocket("ws://localhost:3001")
+  socket.onopen = e => console.log("WebSocket is open")
+  socket.onclose = e => console.log("WebSocket is closed")
+  socket.onerror = e => console.log("WebSocket error occurred")
+  socket.onmessage = e => console.log("WebSocket MESSAGE: " + e.data)
 })()
