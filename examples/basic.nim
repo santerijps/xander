@@ -1,4 +1,4 @@
-import ../xander
+import ../src/xander
 
 # New
 get "/":

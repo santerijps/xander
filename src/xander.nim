@@ -3,7 +3,7 @@ import
   asyncdispatch as async,
   asynchttpserver as http,
   os, strutils, tables, regex, json, sugar, typetraits, strformat, macros,
-  xandercli
+  xander/cli
 
 export
   async,
@@ -245,4 +245,4 @@ proc startServer*() =
   async.waitFor server.serve(async.Port(port), requestHandler)
 
 when isMainModule:
-  xandercli.runXander()
+  cli.runXander()
