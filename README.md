@@ -107,5 +107,4 @@ get("/countries/:country/people/:person", proc(req: Request, vars: var Data): Re
 2. Code refactoring
 3. Seperating different tasks to different files(???)
 4. Template logic (e.g. loops)
-5. Sockets
-6. Initialize Web Server with sockets (e.g. "startServer(socketServer)")
+5. Impement web sockets

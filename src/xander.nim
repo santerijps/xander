@@ -10,7 +10,7 @@ export
   http,
   json,
   tables,
-  sugar
+  strformat
 
 type # Custom types
   ApplicationMode* = enum Debug, Production
@@ -113,6 +113,18 @@ proc parseRequestBody(body: string): JsonNode =
     keys = parsed.getFields()
   return getJsonData(keys, parsed)
 
+# TODO
+proc refererSameAsRequest(req: Request, route: string): bool =
+  if req.reqMethod != HttpGet: return false
+  var referer = req.headers["referer"].toString()
+  referer = referer.replace(re"https?://", "")
+  var start: int
+  for i, c in referer:
+    if c == '/':
+      start = i
+      break
+  return referer[start .. referer.len - 1] == route
+
 proc isValidGetPath(url, kind: string, params: var Data): bool =
   var 
     kind = kind.split("/")
@@ -211,8 +223,6 @@ proc setTemplateDir*(dir: string) =
   if templateDir[templateDir.len - 1] != '/':
     templateDir = templateDir & '/'
 
-setControlCHook(proc() {.noconv.} = quit(0))
-
 proc initStatics(root: string) =
   for file in os.walkFiles(root & "*"):
     var 
@@ -243,6 +253,8 @@ proc startServer*() =
   defer: close(server)
   echo "Web server listening on port ", port
   async.waitFor server.serve(async.Port(port), requestHandler)
+
+setControlCHook(proc() {.noconv.} = quit(0))
 
 when isMainModule:
   cli.runXander()
