@@ -4,7 +4,7 @@ import
   asynchttpserver as http,
   os, strutils, tables, regex, json, sugar, typetraits, strformat, macros
 
-from xander/cli import runXander
+#import xander/cli
 
 export
   async,
@@ -258,4 +258,5 @@ proc startServer*() =
 setControlCHook(proc() {.noconv.} = quit(0))
 
 when isMainModule:
-  cli.runXander()
+  #cli.runXander()
+  echo ":("
