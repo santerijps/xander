@@ -2,8 +2,9 @@ import
   asyncnet,
   asyncdispatch as async,
   asynchttpserver as http,
-  os, strutils, tables, regex, json, sugar, typetraits, strformat, macros,
-  xander/cli
+  os, strutils, tables, regex, json, sugar, typetraits, strformat, macros
+
+from xander/cli import runXander
 
 export
   async,
