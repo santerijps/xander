@@ -20,16 +20,35 @@ type # Custom types
   Data* = JsonNode
   Response* = tuple[body: string, code: HttpCode]
 
-# Custom type functions
-func newDictionary(): Dictionary = initTable[string, string]()
-func newRoute(): Route = initTable[string, HandlerProc]()
-func newRoutingTable(): RoutingTable = initTable[HttpMethod, Route]()
-func newData*(): Data = newJObject()
+func newDictionary(): Dictionary =
+  initTable[string, string]()
+
+func newRoute(): Route =
+  initTable[string, HandlerProc]()
+
+func newRoutingTable(): RoutingTable =
+  initTable[HttpMethod, Route]()
+
+func newData*(): Data =
+  newJObject()
+
+# put and set essentially do the same thing, with the difference
+# that put returns the altered Data object, whereas set simply
+# alters the reference. This way, one can chain puts on one line.
+# e.g. let data = newData("name", "Alice").put("age", 25).put("country", "UK")
+
+func put*[T](node: Data, key: string, value: T): Data =
+  add(result, key, %value)
+  return node
+
+func set*[T](node: var Data, key: string, value: T) = 
+  add(node, key, %value)
+
+func `[]=`*[T](node: var Data, key: string, value: T) =
+  add(node, key, %value)
+
 func newData*[T](key: string, value: T): Data =
-  result = newData()
-  result.add(key, %value)
-func set*[T](node: var Data, key: string, value: T) = node.add(key, %value)
-func `[]=`*[T](node: var Data, key: string, value: T) = node.add(key, %value)
+  newData().put(key, value)
 
 var # Define globals
   server {.threadvar.}: AsyncHttpServer
@@ -43,38 +62,33 @@ var # Define globals
   statics {.threadvar.}: Dictionary
 
 # Global initializations
-server = http.newAsyncHttpServer()
+server = newAsyncHttpServer()
 html = newDictionary()
 routes = newRoutingTable()
 mode = ApplicationMode.Debug
 port = 3000
-projectDir = os.getAppDir().parentDir()
+projectDir = getAppDir().parentDir()
 publicDir = projectDir & "/public/"
 templateDir = projectDir & "/app/views/"
 statics = newDictionary()
 
-proc setPort*(p: uint) = port = p
-proc setMode*(m: ApplicationMode) = mode = m
+proc setPort*(p: uint) = 
+  port = p
 
-proc initTemplates(root: string) =
-  for filepath in os.walkFiles(root & "*"):
-    var file: File
-    if open(file, filepath, fmRead):
-      html[filepath.splitFile().name] = file.readAll()
-      file.close()
-    else:
-      echo "Could not read template ", filepath
-  for dir in os.walkDirs(root & "*"):
-    initTemplates(dir & "/")
+proc setMode*(m: ApplicationMode) = 
+  mode = m
 
 proc templateExists(tmplt: string): bool = 
   html.hasKey(tmplt)
 
 proc getTemplate*(tmplt: string): string =
   if templateExists(tmplt):
-    result = html[tmplt]
+    return html[tmplt]
 
 proc putVars(page: string, vars: Data): string =
+  # Puts the variables defined in 'vars' into specified template.
+  # If a template inclusion is found in the template, its
+  # variables will also be put.
   result = page
   for pair in vars.pairs:
     result = result.replace("{[" & pair.key & "]}", vars[pair.key].getStr())
@@ -83,6 +97,9 @@ proc putVars(page: string, vars: Data): string =
     result = result.replace(m, getTemplate(templ).putVars(vars))
 
 proc buildPage(tmplt: string, vars: Data): string =
+  # Builds a template page. If 'layout' template exists,
+  # it will be used. Otherwise, the specified template
+  # will be used exclusively.
   if templateExists(tmplt):
     if templateExists("layout"):
       result = html["layout"].replace("{[%content%]}", html[tmplt])
@@ -92,6 +109,9 @@ proc buildPage(tmplt: string, vars: Data): string =
     echo "Error! Template does not exist: ", tmplt
 
 proc serve404(req: http.Request) {.async.} =
+  # Respons to client with a 404. If an error template exists
+  # (of the same name 'error'), the template will be served
+  # instead.
   var page: string = "404 page not found"
   if templateExists("error"):
     var vars = newData()
@@ -125,6 +145,8 @@ proc refererSameAsRequest(req: Request, route: string): bool =
   return referer[start .. referer.len - 1] == route
 
 proc isValidGetPath(url, kind: string, params: var Data): bool =
+  # Checks if the given 'url' matches 'kind'. As the 'url' can be dynamic,
+  # the checker will ignore differences if a 'kind' subpath starts with a colon.
   var 
     kind = kind.split("/")
     klen = kind.len
@@ -141,6 +163,9 @@ proc isValidGetPath(url, kind: string, params: var Data): bool =
     result = false
 
 proc checkPath(req: http.Request, kind: string, vars: var Data): bool =
+  # For get requests, checks that the path (which could be dynamic) is valid,
+  # and gets the url parameters. For other requests, the request body is parsed.
+  # The 'kind' parameter is an existing route.
   result = false
   if routes.hasKey(req.reqMethod):
     if req.reqMethod == HttpGet: # URL parameters
@@ -155,6 +180,8 @@ proc checkPath(req: http.Request, kind: string, vars: var Data): bool =
           vars = parseRequestBody(req.body)
   
 proc checkRoutes(req: http.Request) {.async.} =
+  # Checks if the specified request method and path match
+  # a created route. If there is no match, throw a 404.
   var vars: Data
   if routes.hasKey(req.reqMethod):
     for route in routes[req.reqMethod].keys:
@@ -163,6 +190,10 @@ proc checkRoutes(req: http.Request) {.async.} =
         await req.respond(response.code, response.body)
         return
   await serve404(req)
+
+# All the add-procs simply call 'addRoute' with a specified request method
+# and path/route. The add-procs are also utilized by the jester-like syntax
+# enabling macros.
 
 proc addRoute(httpMethod: HttpMethod, path: string, handler: HandlerProc) =
   if not routes.hasKey(httpMethod):
@@ -180,6 +211,11 @@ proc addDelete*(path: string, handler: HandlerProc) =
   
 proc addPut*(path: string, handler: HandlerProc) =
   addRoute(HttpMethod.HttpPut, path, handler)
+
+# The macros are used to allow simple sinatra-like syntax.
+# Each macro calls 'buildRequestHandlerSource' with their 
+# respective request methods in order to call the correct
+# request handler e.g. addGet, addPost etc.
 
 proc buildRequestHandlerSource(reqMethod, route: string, body: untyped): string =
   var source = &"add{reqMethod}(\"{route}\", proc(req: Request, vars: var Data): Response =\n"
@@ -238,11 +274,25 @@ proc initStatics(root: string) =
   for dir in os.walkDirs(root & "*"):
     initStatics(dir & "/")
 
+proc initTemplates(root: string) =
+  for filepath in os.walkFiles(root & "*"):
+    var file: File
+    if open(file, filepath, fmRead):
+      html[filepath.splitFile().name] = readAll(file)
+      close(file)
+    else:
+      echo "ERROR: Could not read template ", filepath
+  for dir in os.walkDirs(root & "*"):
+    initTemplates(dir & "/")
+
 proc init() =
   initStatics(publicDir)
   initTemplates(templateDir)
 
 proc requestHandler(req: http.Request) {.async.} =
+  # Simply calls 'checkRoutes', but first checks
+  # if the app mode is debug, and if so, initializes
+  # public files and templates.
   if mode == ApplicationMode.Debug:
     init()
   await checkRoutes(req)
@@ -253,13 +303,15 @@ proc startServer*() =
   echo "Web server listening on port ", port
   async.waitFor server.serve(async.Port(port), requestHandler)
 
+# This should make killin the app with ctrl + c
+# a bit more graceful.
 setControlCHook(proc() {.noconv.} = quit(0))
 
 when isMainModule:
   # When the xander binary is is executed,
   # a set of commands are provided for:
-  #   - creating a new xander project
-  #   - running a xander project
+  #  - creating a new xander project
+  #  - running a xander project
 
   proc copyDirAndContents(source, destination: string) =
     createDir(destination)
