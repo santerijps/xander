@@ -1,6 +1,9 @@
 # Xander (work in progress)
 A simple HTTP library for Nim inspired by Node.js and Express.
 
+## Installation
+```$ nimble install https://github.com/sunjohanday/xander.git```
+
 A basic example:
 ```nim
 import ../Xander
@@ -89,10 +92,10 @@ In a template, one must define the variables with matching names
 ```
 
 ## Dynamic routes
-To match a custom route and get the provided value(s), one must simply use a colon to specify a dynamic value. The values will be stored in the ```vars``` parameter.
+To match a custom route and get the provided value(s), one must simply use a colon to specify a dynamic value. The values will be stored in the ```vars``` parameter implicitly.
 ```nim
 # User requests /countries/ireland/people/paddy
-get("/countries/:country/people/:person", proc(req: Request, vars: var Data): Response =  
+get "/countries/:country/people/:person": 
   # vars["country"] == "ireland"
   # vars["person"] == "paddy"
   displayTemplate("userPage", vars)
@@ -107,4 +110,4 @@ get("/countries/:country/people/:person", proc(req: Request, vars: var Data): Re
 2. Code refactoring
 3. Seperating different tasks to different files(???)
 4. Template logic (e.g. loops)
-5. Impement web sockets
+5. Implement web sockets

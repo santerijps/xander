@@ -4,6 +4,7 @@ version     = "0.2.0"
 author      = "Santeri Sydänmetsä"
 description = "A Nim web application framework"
 license     = "MIT"
+bin         = @["xander"]
 
 # Deps
 

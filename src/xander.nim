@@ -4,8 +4,6 @@ import
   asynchttpserver as http,
   os, strutils, tables, regex, json, sugar, typetraits, strformat, macros
 
-#import xander/cli
-
 export
   async,
   http,
@@ -258,5 +256,43 @@ proc startServer*() =
 setControlCHook(proc() {.noconv.} = quit(0))
 
 when isMainModule:
-  #cli.runXander()
-  echo ":("
+  # When the xander binary is is executed,
+  # a set of commands are provided for:
+  #   - creating a new xander project
+  #   - running a xander project
+
+  proc copyDirAndContents(source, destination: string) =
+    createDir(destination)
+    for file in walkFiles(source & "/*"):
+      copyFile(file, destination & "/" & file.extractFilename)
+    for dir in walkDirs(source & "/*"):
+      copyDirAndContents(dir, destination & "/" & dir.extractFilename)
+  
+  proc newApp(appName: string) =
+    copyDirAndContents(getAppDir() & "/src/xander/project", getCurrentDir() & "/" & appName)
+  
+  proc runApp() =
+    # Compiles the project into the 'bin' folder, and
+    # runs the project with hints set off.
+    var 
+      currentDir = getCurrentDir()
+      appNim = currentDir & "/app.nim"
+      appExe = currentDir & "/bin/www"
+      cmd = "nim c -r --out:" & appExe & " --hints:off --verbosity:0 --threads:on "
+    if os.fileExists(appNim):
+      discard os.execShellCmd(cmd & appNim)
+    else:
+      echo "ERROR: Could not find 'app.nim' in ", currentDir
+  
+  if os.paramCount() >= 1:
+    var params = os.commandLineParams()
+    case params[0]:
+      of "new":
+        if os.paramCount() > 1:
+          newApp(params[1])
+        else:
+          echo "ERROR: Provide app name!"
+      of "run":
+        runApp()
+      else:
+        echo "ERROR: unknown command: ", params[0]
