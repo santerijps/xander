@@ -2,7 +2,7 @@ import
   asyncnet,
   asyncdispatch as async,
   asynchttpserver as http,
-  os, strutils, tables, regex, json, sugar, typetraits, strformat, macros
+  json, macros, os, regex, strformat, strutils, tables, typetraits
 
 export
   async,
@@ -44,6 +44,11 @@ func put*[T](node: Data, key: string, value: T): Data =
 func set*[T](node: var Data, key: string, value: T) = 
   add(node, key, %value)
 
+func get*(node: Data, key: string): string =
+  let n = node.getOrDefault(key)
+  if n != nil:
+    return n.getStr()
+
 func `[]=`*[T](node: var Data, key: string, value: T) =
   add(node, key, %value)
 
@@ -67,7 +72,7 @@ html = newDictionary()
 routes = newRoutingTable()
 mode = ApplicationMode.Debug
 port = 3000
-projectDir = getAppDir().parentDir()
+projectDir = getAppDir()
 publicDir = projectDir & "/public/"
 templateDir = projectDir & "/app/views/"
 statics = newDictionary()
@@ -248,12 +253,18 @@ proc displayTemplate*(tmplt: string, vars: Data, code: HttpCode = Http200): Resp
 proc displayJSON*(data: Data | JsonNode | string, code: HttpCode = Http200): Response =
   return ($data, code)
 
-proc setPublicDir*(dir: string) = 
+proc setPublicDir*(dir: string) =
+  var dir = dir
+  if dir[0] != '/':
+    dir = '/' & dir
   publicDir = projectDir & dir
   if publicDir[publicDir.len - 1] != '/':
     publicDir = publicDir & '/'
 
 proc setTemplateDir*(dir: string) =
+  var dir = dir
+  if dir[0] != '/':
+    dir = '/' & dir
   templateDir = projectDir & dir
   if templateDir[templateDir.len - 1] != '/':
     templateDir = templateDir & '/'
@@ -265,20 +276,20 @@ proc initStatics(root: string) =
       fp = fr.parentDir() & "/" # file's parent dir
       f: File
     if open(f, file, fmRead):
-      statics[fp & fr.extractFilename()] = f.readAll()
+      statics[fp & fr.extractFilename] = f.readAll()
       addGet(fp & ":file", proc(req: http.Request, vars: var Data): Response =
         return (statics[fp & vars["file"].getStr()], Http200))
       f.close()
     else:
-      echo "Could not read static file ", file
+      echo "ERROR: Could not read static file ", file
   for dir in os.walkDirs(root & "*"):
     initStatics(dir & "/")
 
 proc initTemplates(root: string) =
+  var file: File
   for filepath in os.walkFiles(root & "*"):
-    var file: File
     if open(file, filepath, fmRead):
-      html[filepath.splitFile().name] = readAll(file)
+      html[filepath.splitFile.name] = readAll(file)
       close(file)
     else:
       echo "ERROR: Could not read template ", filepath
@@ -286,6 +297,12 @@ proc initTemplates(root: string) =
     initTemplates(dir & "/")
 
 proc init() =
+  # If the Xander project structure is followed,
+  # this if block will be true
+  if projectDir.extractFilename == "bin":
+    projectDir = projectDir.parentDir
+    publicDir = projectDir & "/public/"
+    templateDir = projectDir & "/app/views/"
   initStatics(publicDir)
   initTemplates(templateDir)
 
@@ -303,7 +320,7 @@ proc startServer*() =
   echo "Web server listening on port ", port
   async.waitFor server.serve(async.Port(port), requestHandler)
 
-# This should make killin the app with ctrl + c
+# This should make killing the app with ctrl + c
 # a bit more graceful.
 setControlCHook(proc() {.noconv.} = quit(0))
 
