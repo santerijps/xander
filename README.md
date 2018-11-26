@@ -47,11 +47,11 @@ Project root folder
 ```
 The public folder can be altered by calling the Xander proc
 ```nim
-setStaticDir("new dir")
+setPublicDir("new dir")
 ```
 The newly set directory is set as the root directory for your public files, so to refer to files in the root public directory, just use the file name. Say we have a directory in the root folder of our project called ```public```, and we want to reference a JavaScript file in it in our html file.
 ```nim
-setStaticDir("public")
+setPublicDir("public")
 ```
 ```html
 <!-- Like this -->
