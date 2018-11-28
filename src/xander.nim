@@ -19,6 +19,8 @@ type # Custom types
   RoutingTable = Table[HttpMethod, Route]
   Data* = JsonNode
   Response* = tuple[body: string, code: HttpCode]
+  Session* = Table[int, Data]
+  For = tuple[collection, each, body: string]
 
 func newDictionary(): Dictionary =
   initTable[string, string]()
@@ -53,7 +55,17 @@ func `[]=`*[T](node: var Data, key: string, value: T) =
   add(node, key, %value)
 
 func newData*[T](key: string, value: T): Data =
-  newData().put(key, value)
+  result = newData()
+  set(result, key, value)
+
+func newSession*(): Table[int, Data] =
+  initTable[int, Data]()
+
+func new*(session: var Session, sessionID: int) =
+  session[sessionID] = newData()
+
+func get*(session: var Session, sessionID: int): Data =
+  session[sessionID]
 
 var # Define globals
   server {.threadvar.}: AsyncHttpServer
@@ -65,6 +77,7 @@ var # Define globals
   templateDir {.threadvar.}: string
   routes {.threadvar.}: RoutingTable
   statics {.threadvar.}: Dictionary
+  session {.threadvar.}: Session
 
 # Global initializations
 server = newAsyncHttpServer()
@@ -76,12 +89,37 @@ projectDir = getAppDir()
 publicDir = projectDir & "/public/"
 templateDir = projectDir & "/app/views/"
 statics = newDictionary()
+session = newSession()
 
 proc setPort*(p: uint) = 
   port = p
 
 proc setMode*(m: ApplicationMode) = 
   mode = m
+
+const # Template parsing REGEX strings
+  MATCH_FOR_ALL = re"(?s)\{\[for \w+ in \w+\]\}\s*(.+?)\{\[end\]\}"
+  MATCH_FOR_STMT = re"\{\[for \w+ in \w+\]\}"
+
+func parseFor(forString: string): For =
+  let forStmt = findAndCaptureAll(forString, MATCH_FOR_STMT)[0].split(" ")
+  result.each = "{[" & forStmt[1] & "]}"
+  result.collection = forStmt[3][0 .. len(forStmt[3]) - 3]
+  var match: RegexMatch
+  if find(forString, MATCH_FOR_ALL, match):
+    let boundaries = group(match, 0)[0]
+    result.body = forString[boundaries.a .. boundaries.b]
+
+func buildFor(forObj: For, vars: Data): string =
+  for item in vars[forObj.collection]:
+    add(result, replace(forObj.body, forObj.each, item.getStr()))
+
+func handleFor(tmplt: string, vars: Data): string =
+  result = tmplt
+  for forString in findAndCaptureAll(tmplt, MATCH_FOR_ALL):
+    let parsed = parseFor(forString)
+    let built = buildFor(parsed, vars)
+    result = result.replace(forString, built)
 
 proc templateExists(tmplt: string): bool = 
   html.hasKey(tmplt)
@@ -94,7 +132,8 @@ proc putVars(page: string, vars: Data): string =
   # Puts the variables defined in 'vars' into specified template.
   # If a template inclusion is found in the template, its
   # variables will also be put.
-  result = page
+  #result = page
+  result = handleFor(page, vars)
   for pair in vars.pairs:
     result = result.replace("{[" & pair.key & "]}", vars[pair.key].getStr())
   for m in findAndCaptureAll(result, re"\{\[template\s\w*\-?\w*\]\}"):

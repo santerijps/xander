@@ -108,6 +108,25 @@ In a template, one must define the variables with matching names
 <p>{[name]} is {[age]} years old.</p>
 ```
 
+### Loops
+Xander templates provide a way of looping with a ```for``` loop similar syntactically to Nim. 
+* Can't access indeces like in Nim (for index, item in collection)
+* Doesn't support inner for-loops
+
+```nim
+get "/fruits":
+  vars["fruits"] = @["apples", "bananas", "mangos"]
+  displayTemplate("fruits", vars)
+```
+```html
+<h1>List of fruits:</h1>
+<ul>
+  {[for fruit in fruits]}
+    <li>{[fruit]}</li>
+  {[end]}
+</ul>
+```
+
 ## Dynamic routes
 To match a custom route and get the provided value(s), one must simply use a colon to specify a dynamic value. The values will be stored in the ```vars``` parameter implicitly.
 ```nim
@@ -125,5 +144,6 @@ get "/countries/:country/people/:person":
 ## TODO
 1. Error handling
 2. Code refactoring
-3. Template logic (e.g. loops)
-4. Web sockets
+3. Cookies / Session
+4. Template logic (e.g. loops)
+5. Web sockets
