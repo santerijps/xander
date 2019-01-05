@@ -147,3 +147,4 @@ get "/countries/:country/people/:person":
 3. Cookies / Session
 4. Template logic (e.g. loops)
 5. Web sockets
+6. Subdomains

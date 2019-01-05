@@ -8,8 +8,7 @@ export
   async,
   http,
   json,
-  tables,
-  strformat
+  tables
 
 type # Custom types
   ApplicationMode* = enum Debug, Production
@@ -22,7 +21,7 @@ type # Custom types
   Session* = Table[int, Data]
   For = tuple[collection, each, body: string]
 
-func newDictionary(): Dictionary =
+func newDictionary*(): Dictionary =
   initTable[string, string]()
 
 func newRoute(): Route =
@@ -34,6 +33,14 @@ func newRoutingTable(): RoutingTable =
 func newData*(): Data =
   newJObject()
 
+func set*(dict: var Dictionary, key, value: string) =
+  dict[key] = value
+
+func `$`*(dict: Dictionary): string =
+  for key in dict.keys:
+    let val = getOrDefault(dict, key)
+    add(result, &"({key}={val})")
+
 # put and set essentially do the same thing, with the difference
 # that put returns the altered Data object, whereas set simply
 # alters the reference. This way, one can chain puts on one line.
@@ -43,8 +50,8 @@ func put*[T](node: Data, key: string, value: T): Data =
   add(result, key, %value)
   return node
 
-func set*[T](node: var Data, key: string, value: T) = 
-  add(node, key, %value)
+func set*[T](node: var Data, key: string, data: T) = 
+  add(node, key, %data)
 
 func get*(node: Data, key: string): string =
   let n = node.getOrDefault(key)
@@ -121,7 +128,7 @@ func handleFor(tmplt: string, vars: Data): string =
     let built = buildFor(parsed, vars)
     result = result.replace(forString, built)
 
-proc templateExists(tmplt: string): bool = 
+proc templateExists*(tmplt: string): bool = 
   html.hasKey(tmplt)
 
 proc getTemplate*(tmplt: string): string =
@@ -291,6 +298,14 @@ proc displayTemplate*(tmplt: string, vars: Data, code: HttpCode = Http200): Resp
 
 proc displayJSON*(data: Data | JsonNode | string, code: HttpCode = Http200): Response =
   return ($data, code)
+
+# TODO
+# FILESERVER
+proc displayFiles*(tmplt, fileDirectory: string, vars: Data, code: HttpCode = Http200): Response =
+  return ($vars, code)
+
+proc displayFiles*(tmplt, fileDirectory: string, code: HttpCode = Http200): Response =
+  displayFiles(tmplt, fileDirectory, newData(), code)
 
 proc setPublicDir*(dir: string) =
   var dir = dir
