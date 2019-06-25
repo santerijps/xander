@@ -58,7 +58,7 @@ templateDirectory = applicationDirectory & "/templates/"
 sessions = newSessions()
 templates = newDictionary()
 fileServers = newSeq[string]()
-xanderServer = newAsyncHttpServer()
+xanderServer = newAsyncHttpServer(maxBody = 2147483647) # 32 bits MAXED
 xanderRoutes = newRoutingTable()
 logger = newConsoleLogger(fmtStr="[$time] - XANDER($levelname) ")
 

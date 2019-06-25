@@ -1,4 +1,4 @@
-# Xander (work in progress)
+# xander (work in progress)
 An easy to use web application development library and framework.
 
 ## Installation with nimble
@@ -16,7 +16,7 @@ runForever(3000)
 More examples can be found in the ```examples``` folder.
 
 ## The Gist of It
-Xander injects variables for the developer to use in request handlers. These variables are:
+xander injects variables for the developer to use in request handlers. These variables are:
 
 - request, the http request
 - data, contains data sent from the client such as get parameters and form data
@@ -41,7 +41,7 @@ serveFiles "/public"
 ```
 
 ## Templates
-Xander provides support for templates, although it is very much a work in progress.
+xander provides support for templates, although it is very much a work in progress.
 To serve a template file:
 ```nim
 # Serve the index page
@@ -64,10 +64,10 @@ By having a ```layout.html``` template one can define a base layout for their pa
   </body>
 </html>
 ```
-In the example above, ```{[title]}``` is a user defined variable, whereas ```{[%content%]}``` is a Xander defined variable, that contains the contents of a template file. To include your own templates, use the ```template``` keyword ```{[template my-template]}```. You can also include templates that themselves include other templates.
+In the example above, ```{[title]}``` is a user defined variable, whereas ```{[%content%]}``` is a xander defined variable, that contains the contents of a template file. To include your own templates, use the ```template``` keyword ```{[template my-template]}```. You can also include templates that themselves include other templates.
 
 ### User-defined variables
-Xander provides a custom type ```Data```, which is shorthand for ```JsonNode```, and it also adds some functions to make life easier. To initialize it, one must use the ```newData()``` func. In the initialized variable, one can add key-value pairs
+xander provides a custom type ```Data```, which is shorthand for ```JsonNode```, and it also adds some functions to make life easier. To initialize it, one must use the ```newData()``` func. In the initialized variable, one can add key-value pairs
 ```nim
 var vars = newData()
 vars["name"] = "Alice"
@@ -90,7 +90,7 @@ To match a custom route and get the provided value(s), one must simply use a col
 get "/countries/:country/people/:person": 
   assert(data["country"] == "ireland")
   assert(data["person"] == "paddy")
-  respond("userPage", data)
+  respond tmplt("userPage", data)
 )
 ```
 ```html
@@ -99,6 +99,7 @@ get "/countries/:country/people/:person":
 
 ## TODO
 - Add request headers to the ```headers``` variable
+- Setting restrictions
 - Error handling
 - Code refactoring
 - Templates
