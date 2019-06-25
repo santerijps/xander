@@ -1,79 +1,54 @@
 # Xander (work in progress)
-A simple HTTP library for Nim inspired by Node.js and Express.
+An easy to use web application development library and framework.
 
-## Installation
+## Installation with nimble
 ```$ nimble install https://github.com/sunjohanday/xander.git```
 
 A basic example:
 ```nim
-import ../Xander
+import xander
 
 get "/":
-  display("index")
+  respond "Hello World!"
 
-get "/about": 
-  display("This is the very basic example")
-
-startServer()
+runForever(3000)
 ```
 More examples can be found in the ```examples``` folder.
 
-## Getting started with xandercli (coming soon)
-1. Move to directory you want to create your project
-2. In the command line, type ```xander new my-first-app```
-3. ```$ cd my-first-app```
-4. To run your app, type ```xander run``` in the command line
+## The Gist of It
+Xander injects variables for the developer to use in request handlers. These variables are:
 
-## Project structure
-The default folder structure is the following:
-```
-Project root folder
-  app
-    controllers
-    models
-    views
-      layout.html
-      index.html
-  bin
-  public
-    css
-      bootstrap.min.css
-      ...
-    js
-      bootstrap.min.js
-      ...
-  app.nim
-  ...
-```
-The public folder can be altered by calling the Xander proc
+- request, the http request
+- data, contains data sent from the client such as get parameters and form data
+- headers, for setting response headers (see request.headers for request headers)
+- cookies, for accessing request cookies and setting response cookies
+- session, client specific session variables
+- files, uploaded files
+
+These variables do a lot of the legwork required in an effective web application.
+
+To serve files from a directory (and its sub-directories)
 ```nim
-setPublicDir("new dir")
-```
-The newly set directory is set as the root directory for your public files, so to refer to files in the root public directory, just use the file name. Say we have a directory in the root folder of our project called ```public```, and we want to reference a JavaScript file in it in our html file.
-```nim
-setPublicDir("public")
+# app.nim
+# the app dir contains a directory called 'public'
+serveFiles "/public"
 ```
 ```html
-<!-- Like this -->
-<script src="main.js"></script>
-<!-- NOT like this -->
-<script src="public/main.js"></script>
-```
-If you place subdirectories in the public directory, you reference them normally.
-```html
-<link rel="stylesheet" href="css/styles.css">
+<img src="/public/image.jpg" height="300"/>
+<script src="/public/js/main.js"></script>
+<link rel="stylesheet" href="/public/css/main.css"/>
 ```
 
 ## Templates
-Xander provides support for templates, although it is very much a work in progress and for example *does not* support including files.
+Xander provides support for templates, although it is very much a work in progress.
 To serve a template file:
 ```nim
 # Serve the index page
-displayTemplate("index")
+respond tmplt("index")
 ```
-The default folder for templates is the ```app/views``` folder, but it can also be changed by calling
+The default directory for templates is ```app_dir/templates```, but it can also be changed by calling
 ```nim
-xander.setTemplateDir("new dir")
+setTemplateDirectory("views")
 ```
 By having a ```layout.html``` template one can define a base layout for their pages.
 ```html
@@ -97,44 +72,24 @@ var vars = newData()
 vars["name"] = "Alice"
 vars["age"] = 21
 
-vars.set("weight", 50) # sends 'vars' as reference, returns void
-vars = vars.put("height", 1.70) # returns updated vars
+vars.set("weight", 50)
 
 # or you can initialize it with a key-value pair
 var vars = newData("name", "Alice").put("age", 21)
 ```
-In a template, one must define the variables with matching names
+In a template, one must define the variables with matching names. Currently, if no variables are provided, the values will default to empty strings.
 ```html
 <p>{[name]} is {[age]} years old.</p>
 ```
 
-### Loops
-Xander templates provide a way of looping with a ```for``` loop similar syntactically to Nim. 
-* Can't access indeces like in Nim (for index, item in collection)
-* Doesn't support inner for-loops
-
-```nim
-get "/fruits":
-  vars["fruits"] = @["apples", "bananas", "mangos"]
-  displayTemplate("fruits", vars)
-```
-```html
-<h1>List of fruits:</h1>
-<ul>
-  {[for fruit in fruits]}
-    <li>{[fruit]}</li>
-  {[end]}
-</ul>
-```
-
 ## Dynamic routes
-To match a custom route and get the provided value(s), one must simply use a colon to specify a dynamic value. The values will be stored in the ```vars``` parameter implicitly.
+To match a custom route and get the provided value(s), one must simply use a colon to specify a dynamic value. The values will be stored in the ```data``` parameter implicitly.
 ```nim
 # User requests /countries/ireland/people/paddy
 get "/countries/:country/people/:person": 
-  # vars["country"] == "ireland"
-  # vars["person"] == "paddy"
-  displayTemplate("userPage", vars)
+  assert(data["country"] == "ireland")
+  assert(data["person"] == "paddy")
+  respond("userPage", data)
 )
 ```
 ```html
@@ -142,9 +97,9 @@ get "/countries/:country/people/:person":
 ```
 
 ## TODO
-1. Error handling
-2. Code refactoring
-3. Cookies / Session
-4. Template logic (e.g. loops)
-5. Web sockets
-6. Subdomains
+- Add request headers to the ```headers``` variable
+- Error handling
+- Code refactoring
+- Templates
+- Web sockets
+- Subdomains
