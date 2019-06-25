@@ -232,22 +232,34 @@ proc isValidGetPath(url, kind: string, params: var Data): bool =
   else:
     result = false
 
+proc hasSubdomain(host: string, subdomain: var string): bool =
+  let domains = host.split('.')
+  let count = domains.len
+  if count > 1: # ["api", "mysite", "com"] ["mysite", "com"] ["api", "localhost"]
+    if (count >= 3) or (count == 2 and domains[1].split(":")[0] == "localhost"):
+      subdomain = domains[0]
+      result = true
+
+proc handleSubdomain(request: Request): string =
+  result = request.url.path
+  var subdomain: string
+  if hasSubdomain(request.headers["host"], subdomain):
+    result = subdomain & "." & result
+
 proc checkPath(request: Request, kind: string, data: var Data, files: var UploadFiles): bool =
   # For get requests, checks that the path (which could be dynamic) is valid,
   # and gets the url parameters. For other requests, the request body is parsed.
   # The 'kind' parameter is an existing route.
-  result = false
+  let path = handleSubdomain(request)
   if xanderRoutes.hasKey(request.reqMethod):
     if request.reqMethod == HttpGet: # URL parameters
-      if request.url.path.isValidGetPath(kind, data):
-        result = true
-    else: # Request body
+      result = isValidGetPath(path, kind, data)
+    else: # Form body
       let contentType = request.headers["Content-Type"].split(";") # TODO: Use me wisely to detemine how to parse request body
-      if request.url.path == kind:
+      if path == kind:
         result = true
         if request.body.len > 0:
-          #if "------WebKitFormBoundary" in request.body: # File upload
-          if "multipart/form-data" in contentType:
+          if "multipart/form-data" in contentType: # File upload
             let boundary = "--" & contentType[1].split("=")[1]
             parseFormMultiPart(request.body, boundary, data, files)
           else: # Other
@@ -271,6 +283,7 @@ proc getSession(cookies: var Cookies, session: var Session): string =
   return ssid
 
 proc onRequest*(request: Request): Future[void] {.gcsafe.} =
+  # TODO: Check that request size <= server max allowed size
   # Called on each request to server
   var 
     data: Data = newData()

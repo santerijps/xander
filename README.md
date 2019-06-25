@@ -66,7 +66,7 @@ By having a ```layout.html``` template one can define a base layout for their pa
 ```
 In the example above, ```{[title]}``` is a user defined variable, whereas ```{[%content%]}``` is a xander defined variable, that contains the contents of a template file. To include your own templates, use the ```template``` keyword ```{[template my-template]}```. You can also include templates that themselves include other templates.
 
-### User-defined variables
+### Template variables
 xander provides a custom type ```Data```, which is shorthand for ```JsonNode```, and it also adds some functions to make life easier. To initialize it, one must use the ```newData()``` func. In the initialized variable, one can add key-value pairs
 ```nim
 var vars = newData()
@@ -95,6 +95,19 @@ get "/countries/:country/people/:person":
 ```
 ```html
 <h1>{[person]} is from {[country]}</h1>
+```
+
+## Subdomains
+To add a subdomain to your application simply do the following:
+```nim
+# Matches api.localhost/
+get "api./":
+  respond newData("message", "hello")
+
+# Matches api.localhost/people
+get "api./people":
+  let people = @["adam", "beth", "charles", "david", "emma", "fiona"]
+  respond newData("people", people)
 ```
 
 ## TODO

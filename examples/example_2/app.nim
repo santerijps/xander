@@ -3,9 +3,14 @@ import ../../src/xander
 serveFiles "/public"
 setTemplateDirectory "/templates"
 
+get "api./":
+  respond "API ROOT"
+
+get "api./people":
+  let people = @["adam", "beth", "charles", "david", "emma", "fiona"]
+  respond newData("people", people)
+
 get "/":
-  if session.hasKey("authenticated") and session.getBool("authenticated"):
-    return redirect("/home")
   var uploadedFiles = "<ul>"
   for f in walkFiles("./public/uploads/*"):
     let name = f.extractFileName
