@@ -27,6 +27,7 @@ Xander injects variables for the developer to use in request handlers. These var
 
 These variables do a lot of the legwork required in an effective web application.
 
+## Serving files
 To serve files from a directory (and its sub-directories)
 ```nim
 # app.nim
