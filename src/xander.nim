@@ -111,13 +111,13 @@ func respond*(body: string, httpCode: HttpCode = Http200, headers = newHttpHeade
 proc respond*(data: Data, httpCode = Http200, headers = newHttpHeaders()): Response =
   return ($data, httpCode, headers)
 
-proc redirect*(path: string, headerName: string, data: Data, httpCode: HttpCode = Http303): Response =
-  let headers = newHttpHeaders([("Location", path), (headerName, $data)])
-  return ("", httpCode, headers)
-
-proc redirect*(path: string, httpCode: HttpCode = Http303): Response =
-  let headers = newHttpHeaders([("Location", path)])
-  return ("", httpCode, headers)
+proc redirect*(path: string, content = "", delay = 0, httpCode = Http303): Response =
+  var headers: HttpHeaders
+  if delay == 0:
+    headers = newHttpHeaders([("Location", path)])
+  else:
+    headers = newHttpHeaders([("refresh", &"{delay};url=\"{path}\"")])
+  return (content, httpCode, headers)
 
 proc serve(request: Request, httpCode: HttpCode, content: string = ""): Future[void] {.async.} =
   await request.respond(httpCode, "")
@@ -162,8 +162,9 @@ proc parseFormMultiPart(body, boundary: string, data: var Data, files: var Uploa
         files[varName].add(newUploadFile(fileName, fileExtension, content, size))
       varName = ""; fileName = ""; content = ""
 
-proc uploadFile*(directory: string, file: UploadFile): void =
-  var filePath = if directory.endsWith("/"): directory & file.name else: directory & "/" & file.name
+proc uploadFile*(directory: string, file: UploadFile, name = ""): void =
+  let fileName = if name == "": file.name else: name
+  var filePath = if directory.endsWith("/"): directory & fileName else: directory & "/" & fileName
   try:
     writeFile(filePath, file.content)
   except IOError:
@@ -269,7 +270,7 @@ proc getSession(cookies: var Cookies, session: var Session): string =
       session = sessions[ssid]  
   return ssid
 
-proc onRequest(request: Request): Future[void] {.gcsafe.} =
+proc onRequest*(request: Request): Future[void] {.gcsafe.} =
   # Called on each request to server
   var 
     data: Data = newData()
@@ -308,6 +309,10 @@ proc runForever*(port: uint = 3000, message: string = "Xander server is up and r
   defer: close(xanderServer)
   readTemplates(templateDirectory, templates)
   waitFor xanderServer.serve(port, onRequest)
+
+proc getServer*(): AsyncHttpServer =
+  readTemplates(templateDirectory, templates)
+  return xanderServer
 
 proc addRoute*(httpMethod: HttpMethod, route: string, handler: RequestHandler): void =
   if not xanderRoutes.hasKey(httpMethod):
@@ -351,10 +356,11 @@ macro delete*(route: string, body: untyped): void =
   parseStmt(requestHandlerSource)
 
 # TODO: Dynamically created directories are not supported
-proc addGetForFiles(route: string): void =
+proc serveFiles*(route: string): void =
   # Given a route, e.g. '/public', this proc
   # adds a get method for provided directory and
   # its child directories. This proc is RECURSIVE.
+  logger.log(lvlInfo, "Serving files from ", applicationDirectory & route)
   let path = if route.endsWith("/"): route[0..route.len-2] else: route # /public/ => /public
   let newRoute = path & "/:fileName" # /public/:fileName
   addGet(newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response = 
@@ -365,14 +371,8 @@ proc addGetForFiles(route: string): void =
       respond readFile(filePath)
     else: respond Http404)
   for directory in walkDirs("." & path & "/*"):
-    addGetForFiles(directory[1..directory.len - 1])
-
-proc serveFiles*(route: string): void =
-  let path = applicationDirectory & route
-  addGetForFiles(route)
-  logger.log(lvlInfo, "Serving files from ", path)
+    serveFiles(directory[1..directory.len - 1])
 
 when isMainModule:
-  # TODO: stuff
   # TODO: project creation etc.
   discard
