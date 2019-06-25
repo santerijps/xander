@@ -20,11 +20,11 @@ import
   uri
 
 import # Local imports
-  constants,
-  contenttype,
-  templating,
-  tools,
-  types
+  xander/constants,
+  xander/contenttype,
+  xander/templating,
+  xander/tools,
+  xander/types
 
 export # TODO: What really needs to be exported???
   async,
