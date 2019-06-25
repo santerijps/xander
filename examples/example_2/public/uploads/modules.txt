@@ -1,6 +1,0 @@
-43862		Data Structures and Concurrency
-43764		Irish Studies
-43860		Object Oriented Analysis and Design
-49297		Web Frameworks
-43876		Software Tools
-44855		Security and Cryptography
