@@ -2,175 +2,192 @@ import
   asyncnet,
   asyncdispatch as async,
   asynchttpserver as http,
-  json, macros, os, regex, strformat, strutils, tables, typetraits
+  cookies as cookies_module,
+  base64,
+  hashes,
+  json,
+  logging,
+  macros,
+  os,
+  random,
+  regex,
+  strformat,
+  strtabs,
+  strutils,
+  tables,
+  times,
+  typetraits,
+  uri
 
-export
+import # Local imports
+  constants,
+  contenttype,
+  templating,
+  tools,
+  types
+
+export # TODO: What really needs to be exported???
   async,
+  cookies_module,
   http,
   json,
-  tables
+  os,
+  strformat,
+  tables,
+  types,
+  tools
 
-type # Custom types
-  ApplicationMode* = enum Debug, Production
-  Dictionary* = Table[string, string]
-  HandlerProc* = proc(req: http.Request, vars: var Data): Response
-  Route = Table[string, HandlerProc]
-  RoutingTable = Table[HttpMethod, Route]
-  Data* = JsonNode
-  Response* = tuple[body: string, code: HttpCode]
-  Session* = Table[int, Data]
-  For = tuple[collection, each, body: string]
+randomize()
 
-func newDictionary*(): Dictionary =
-  initTable[string, string]()
+var # Global variables
+  # Directories
+  applicationDirectory {.threadvar.} : string
+  templateDirectory {.threadvar.} : string
+  # Storage
+  sessions {.threadvar.} : Sessions
+  templates {.threadvar.} : Dictionary
+  fileServers {.threadvar.} : seq[string]
+  # Fundamental server variables
+  xanderServer {.threadvar.} : AsyncHttpServer
+  xanderRoutes {.threadvar.} : RoutingTable
+  # Logger
+  logger {.threadvar.} : Logger
 
-func newRoute(): Route =
-  initTable[string, HandlerProc]()
+applicationDirectory = getAppDir()
+templateDirectory = applicationDirectory & "/templates/"
+sessions = newSessions()
+templates = newDictionary()
+fileServers = newSeq[string]()
+xanderServer = newAsyncHttpServer()
+xanderRoutes = newRoutingTable()
+logger = newConsoleLogger(fmtStr="[$time] - XANDER($levelname) ")
 
-func newRoutingTable(): RoutingTable =
-  initTable[HttpMethod, Route]()
+proc setTemplateDirectory*(path: string): void =
+  var path = path
+  if not path.startsWith("/"):
+    path = "/" & path
+  if not path.endsWith("/"):
+    path &= "/"
+  templateDirectory = applicationDirectory & path
 
-func newData*(): Data =
-  newJObject()
-
-func set*(dict: var Dictionary, key, value: string) =
-  dict[key] = value
-
-func `$`*(dict: Dictionary): string =
-  for key in dict.keys:
-    let val = getOrDefault(dict, key)
-    add(result, &"({key}={val})")
-
-# put and set essentially do the same thing, with the difference
-# that put returns the altered Data object, whereas set simply
-# alters the reference. This way, one can chain puts on one line.
-# e.g. let data = newData("name", "Alice").put("age", 25).put("country", "UK")
-
-func put*[T](node: Data, key: string, value: T): Data =
-  add(result, key, %value)
-  return node
-
-func set*[T](node: var Data, key: string, data: T) = 
-  add(node, key, %data)
-
-func get*(node: Data, key: string): string =
-  let n = node.getOrDefault(key)
-  if n != nil:
-    return n.getStr()
-
-func `[]=`*[T](node: var Data, key: string, value: T) =
-  add(node, key, %value)
-
-func newData*[T](key: string, value: T): Data =
-  result = newData()
-  set(result, key, value)
-
-func newSession*(): Table[int, Data] =
-  initTable[int, Data]()
-
-func new*(session: var Session, sessionID: int) =
-  session[sessionID] = newData()
-
-func get*(session: var Session, sessionID: int): Data =
-  session[sessionID]
-
-var # Define globals
-  server {.threadvar.}: AsyncHttpServer
-  html {.threadvar.}: Dictionary
-  mode {.threadvar.}: ApplicationMode
-  port {.threadvar.}: uint
-  projectDir {.threadvar.}: string
-  publicDir {.threadvar.}: string
-  templateDir {.threadvar.}: string
-  routes {.threadvar.}: RoutingTable
-  statics {.threadvar.}: Dictionary
-  session {.threadvar.}: Session
-
-# Global initializations
-server = newAsyncHttpServer()
-html = newDictionary()
-routes = newRoutingTable()
-mode = ApplicationMode.Debug
-port = 3000
-projectDir = getAppDir()
-publicDir = projectDir & "/public/"
-templateDir = projectDir & "/app/views/"
-statics = newDictionary()
-session = newSession()
-
-proc setPort*(p: uint) = 
-  port = p
-
-proc setMode*(m: ApplicationMode) = 
-  mode = m
-
-const # Template parsing REGEX strings
-  MATCH_FOR_ALL = re"(?s)\{\[for \w+ in \w+\]\}\s*(.+?)\{\[end\]\}"
-  MATCH_FOR_STMT = re"\{\[for \w+ in \w+\]\}"
-
-func parseFor(forString: string): For =
-  let forStmt = findAndCaptureAll(forString, MATCH_FOR_STMT)[0].split(" ")
-  result.each = "{[" & forStmt[1] & "]}"
-  result.collection = forStmt[3][0 .. len(forStmt[3]) - 3]
-  var match: RegexMatch
-  if find(forString, MATCH_FOR_ALL, match):
-    let boundaries = group(match, 0)[0]
-    result.body = forString[boundaries.a .. boundaries.b]
-
-func buildFor(forObj: For, vars: Data): string =
-  for item in vars[forObj.collection]:
-    add(result, replace(forObj.body, forObj.each, item.getStr()))
-
-func handleFor(tmplt: string, vars: Data): string =
-  result = tmplt
-  for forString in findAndCaptureAll(tmplt, MATCH_FOR_ALL):
-    let parsed = parseFor(forString)
-    let built = buildFor(parsed, vars)
-    result = result.replace(forString, built)
-
-proc templateExists*(tmplt: string): bool = 
-  html.hasKey(tmplt)
-
-proc getTemplate*(tmplt: string): string =
-  if templateExists(tmplt):
-    return html[tmplt]
-
-proc putVars(page: string, vars: Data): string =
+proc fillTemplateWithData*(templateString: string, data: Data): string =
   # Puts the variables defined in 'vars' into specified template.
   # If a template inclusion is found in the template, its
   # variables will also be put.
-  #result = page
-  result = handleFor(page, vars)
-  for pair in vars.pairs:
-    result = result.replace("{[" & pair.key & "]}", vars[pair.key].getStr())
+  result = templateString
+  #result = handleFor(page, data)
+  # Insert template variables
+  for pair in data.pairs:
+    result = result.replace("{[" & pair.key & "]}", data[pair.key].getStr())
+  # Clear unused template variables
+  for m in findAndCaptureAll(result, re"\{\[\w+\]\}"):
+    result = result.replace(m, "")
+  # Find embedded templates and insert their template variables
   for m in findAndCaptureAll(result, re"\{\[template\s\w*\-?\w*\]\}"):
     var templ = m.substr(2, m.len - 3).split(" ")[1]
-    result = result.replace(m, getTemplate(templ).putVars(vars))
+    result = result.replace(m, templates[templ].fillTemplateWithData(data))
 
-proc buildPage(tmplt: string, vars: Data): string =
-  # Builds a template page. If 'layout' template exists,
-  # it will be used. Otherwise, the specified template
-  # will be used exclusively.
-  if templateExists(tmplt):
-    if templateExists("layout"):
-      result = html["layout"].replace("{[%content%]}", html[tmplt])
-    else: result = html[tmplt]
-    result = putVars(result, vars)
+proc tmplt*(templateName: string, data: Data = newData()): string =
+  if templates.hasKey(templateName):
+    if templates.hasKey("layout"):
+      let layout = templates["layout"]
+      result = layout.replace(contentTag, templates[templateName])
+    else:
+      result = templates[templateName]
+    result = fillTemplateWithData(result, data)
   else:
-    echo "Error! Template does not exist: ", tmplt
+    logger.log(lvlError, &"Template '{templateName}' does not exist!")
 
-proc serve404(req: http.Request) {.async.} =
-  # Respons to client with a 404. If an error template exists
-  # (of the same name 'error'), the template will be served
-  # instead.
-  var page: string = "404 page not found"
-  if templateExists("error"):
-    var vars = newData()
-    vars["title"] = "Error"
-    vars["code"] = 404
-    vars["message"] = "Page not found"
-    page = buildPage("error", vars)
-  await req.respond(Http404, page)
+proc html*(content: string): string = 
+  # Let's the browser know that the response should be treated as HTML
+  "<!DOCTYPE html><meta charset=\"utf-8\">\n" & content
+
+func respond*(httpCode: HttpCode = Http200, body: string = "", headers: HttpHeaders = newHttpHeaders()): Response =
+  return (body, httpCode, headers)
+
+func respond*(body: string, httpCode: HttpCode = Http200, headers = newHttpHeaders()): Response =
+  return (body, httpCode, headers)
+
+proc respond*(data: Data, httpCode = Http200, headers = newHttpHeaders()): Response =
+  return ($data, httpCode, headers)
+
+proc redirect*(path: string, headerName: string, data: Data, httpCode: HttpCode = Http303): Response =
+  let headers = newHttpHeaders([("Location", path), (headerName, $data)])
+  return ("", httpCode, headers)
+
+proc redirect*(path: string, httpCode: HttpCode = Http303): Response =
+  let headers = newHttpHeaders([("Location", path)])
+  return ("", httpCode, headers)
+
+proc serve(request: Request, httpCode: HttpCode, content: string = ""): Future[void] {.async.} =
+  await request.respond(httpCode, "")
+
+proc serveError(request: Request, httpCode: HttpCode = Http500, message: string = ""): Future[void] {.async.} =
+  var content = message
+  if templates.hasKey("error"):
+    var data = newData()
+    data["title"] = "Error"
+    data["code"] = $httpCode
+    data["message"] = message
+    content = tmplt("error", data)
+  else:
+    content = &"<h2>({httpCode}) Error</h2><hr><p>{message}</p>"
+    content = html(content)
+  await serve(request, httpCode, content)
+
+proc parseFormMultiPart(body, boundary: string, data: var Data, files: var UploadFiles): void = 
+  let fileInfos = body.split(boundary) # Contains: Content-Disposition, Content-Type, Others... and actual content 
+  var
+    parts: seq[string]
+    fileName, fileExtension, content, varName: string
+    size: int
+  for fileInfo in fileInfos:
+    if "Content-Disposition" in fileInfo:
+      parts = fileInfo.split("\c\n\c\n", 1)
+      assert parts.len == 2
+      for keyVals in parts[0].split(";"):
+        if " name=" in keyVals:
+          varName = keyVals.split(" name=\"")[1].strip(chars = {'"'})
+        if " filename=" in keyVals:
+          fileName = keyVals.split(" filename=\"")[1].split("\"")[0]
+          fileExtension = if '.' in fileName: fileName.split(".")[1] else: "file"
+      content = parts[1][0..parts[1].len - 3] # Strip the last two characters out = \r\n
+      size = content.len
+      # Add variables to Data and files to UploadFiles
+      if fileName.len == 0: # Data
+        data[varName] = content#.strip()
+      else: # UploadFiles
+        if not files.hasKey(varName):
+          files[varName] = newSeq[UploadFile]()
+        files[varName].add(newUploadFile(fileName, fileExtension, content, size))
+      varName = ""; fileName = ""; content = ""
+
+proc uploadFile*(directory: string, file: UploadFile): void =
+  var filePath = if directory.endsWith("/"): directory & file.name else: directory & "/" & file.name
+  try:
+    writeFile(filePath, file.content)
+  except IOError:
+    logger.log(lvlError, "IOError: Failed to write file")
+
+proc uploadFiles*(directory: string, files: seq[UploadFile]): void =
+  var filePath: string
+  let dir = if directory.endsWith("/"): directory else: directory & "/" 
+  for file in files:
+    filePath = dir & file.name
+    try:
+      writeFile(filePath, file.content)
+    except IOError:
+      logger.log(lvlError, &"IOError: Failed to write file '{filePath}'")
+
+proc parseForm(body: string): JsonNode =
+  result = newJObject()
+  # Use decodeUrl(body, false) if plusses (+) should not
+  # be considered spaces.
+  let urlDecoded = decodeUrl(body)
+  let kvPairs = urlDecoded.split("&")
+  for kvPair in kvPairs:
+    let kvArray = kvPair.split("=")
+    result.set(kvArray[0], kvArray[1])
 
 proc getJsonData(keys: OrderedTable[string, JsonNode], node: JsonNode): JsonNode = 
   result = newJObject()
@@ -178,22 +195,23 @@ proc getJsonData(keys: OrderedTable[string, JsonNode], node: JsonNode): JsonNode
     result{key} = node[key]
 
 proc parseRequestBody(body: string): JsonNode =
-  var
-    parsed = json.parseJson(body)
-    keys = parsed.getFields()
-  return getJsonData(keys, parsed)
+  try: # JSON
+    var
+      parsed = json.parseJson(body)
+      keys = parsed.getFields()
+    return getJsonData(keys, parsed)
+  except: # Form
+    return parseForm(body)
 
-# TODO
-proc refererSameAsRequest(req: Request, route: string): bool =
-  if req.reqMethod != HttpGet: return false
-  var referer = req.headers["referer"].toString()
-  referer = referer.replace(re"https?://", "")
-  var start: int
-  for i, c in referer:
-    if c == '/':
-      start = i
-      break
-  return referer[start .. referer.len - 1] == route
+func parseUrlQuery(query: string, data: var Data): void =
+  let query = decodeUrl(query)
+  if query.len > 0:
+    for parameter in query.split("&"):
+      if "=" in parameter:
+        let pair = parameter.split("=")
+        data[pair[0]] = pair[1]
+      else:
+        data[parameter] = true
 
 proc isValidGetPath(url, kind: string, params: var Data): bool =
   # Checks if the given 'url' matches 'kind'. As the 'url' can be dynamic,
@@ -213,209 +231,148 @@ proc isValidGetPath(url, kind: string, params: var Data): bool =
   else:
     result = false
 
-proc checkPath(req: http.Request, kind: string, vars: var Data): bool =
+proc checkPath(request: Request, kind: string, data: var Data, files: var UploadFiles): bool =
   # For get requests, checks that the path (which could be dynamic) is valid,
   # and gets the url parameters. For other requests, the request body is parsed.
   # The 'kind' parameter is an existing route.
   result = false
-  if routes.hasKey(req.reqMethod):
-    if req.reqMethod == HttpGet: # URL parameters
-      var getParams = newData()
-      if req.url.path.isValidGetPath(kind, getParams):
+  if xanderRoutes.hasKey(request.reqMethod):
+    if request.reqMethod == HttpGet: # URL parameters
+      if request.url.path.isValidGetPath(kind, data):
         result = true
-        vars = getParams
     else: # Request body
-      if req.url.path == kind:
+      let contentType = request.headers["Content-Type"].split(";") # TODO: Use me wisely to detemine how to parse request body
+      if request.url.path == kind:
         result = true
-        if req.body.len > 0:
-          vars = parseRequestBody(req.body)
-  
-proc checkRoutes(req: http.Request) {.async.} =
-  # Checks if the specified request method and path match
-  # a created route. If there is no match, throw a 404.
-  var vars: Data
-  if routes.hasKey(req.reqMethod):
-    for route in routes[req.reqMethod].keys:
-      if checkPath(req, route, vars):
-        let response = routes[req.reqMethod][route](req, vars)
-        await req.respond(response.code, response.body)
-        return
-  await serve404(req)
+        if request.body.len > 0:
+          #if "------WebKitFormBoundary" in request.body: # File upload
+          if "multipart/form-data" in contentType:
+            let boundary = "--" & contentType[1].split("=")[1]
+            parseFormMultiPart(request.body, boundary, data, files)
+          else: # Other
+            data = parseRequestBody(request.body)
 
-# All the add-procs simply call 'addRoute' with a specified request method
-# and path/route. The add-procs are also utilized by the jester-like syntax
-# enabling macros.
+# TODO: This is not very random
+proc generateSessionId(): Hash =  
+  hash(cpuTime() + rand(10000).float)
 
-proc addRoute(httpMethod: HttpMethod, path: string, handler: HandlerProc) =
-  if not routes.hasKey(httpMethod):
-    routes[httpMethod] = newRoute()
-  routes[httpMethod][path] = handler
+proc getSession(cookies: var Cookies, session: var Session): string =
+  # Gets a session if one exists. Initializes a new one if it doesn't.
+  var ssid: string
+  if not cookies.contains("XANDER-SSID"):
+    ssid = $generateSessionId()
+    sessions[ssid] = session
+    cookies.set("XANDER-SSID", ssid)
+  else:
+    ssid = cookies.get("XANDER-SSID")
+    if sessions.hasKey(ssid):
+      session = sessions[ssid]  
+  return ssid
 
-proc addGet*(path: string, handler: HandlerProc) =
-  addRoute(HttpMethod.HttpGet, path, handler)
+proc onRequest(request: Request): Future[void] {.gcsafe.} =
+  # Called on each request to server
+  var 
+    data: Data = newData()
+    headers: HttpHeaders = newHttpHeaders()
+    cookies: Cookies = newCookies()
+    session: Session = newSession()
+    files: UploadFiles = newUploadFiles()
+  if xanderRoutes.hasKey(request.reqMethod):
+    for route in xanderRoutes[request.reqMethod].keys:
+      if checkPath(request, route, data, files):
+        # Get URL query parameters
+        parseUrlQuery(request.url.query, data)
+        # Parse cookies from header
+        let parsedCookies: StringTableRef = parseCookies(request.headers.getOrDefault("Cookie"))
+        # Cookies sent from client
+        for key, val in parsedCookies.pairs:
+          cookies.setClient(key, val)
+        # Create or get session and session ID
+        let ssid = getSession(cookies, session)
+        # Developer request handler response
+        var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
+        # Update session
+        sessions[ssid] = session
+        # Cookies set on server => add them to headers
+        for key, cookie in cookies.server:
+          response.headers.add("Set-Cookie", cookies_module.setCookie(cookie.name, cookie.value, cookie.domain, cookie.path, cookie.expires, true))
+        # Put headers into response
+        for key, val in headers.pairs:
+          response.headers.add(key, val)
+        return request.respond(response.httpCode, response.body, response.headers)
+  serveError(request, Http404)
 
-proc addPost*(path: string, handler: HandlerProc) =
-  addRoute(HttpMethod.HttpPost, path, handler)
+proc runForever*(port: uint = 3000, message: string = "Xander server is up and running!"): void =
+  logger.log(lvlInfo, message)
+  let port: Port = Port(port)
+  defer: close(xanderServer)
+  readTemplates(templateDirectory, templates)
+  waitFor xanderServer.serve(port, onRequest)
 
-proc addDelete*(path: string, handler: HandlerProc) =
-  addRoute(HttpMethod.HttpDelete, path, handler)
-  
-proc addPut*(path: string, handler: HandlerProc) =
-  addRoute(HttpMethod.HttpPut, path, handler)
+proc addRoute*(httpMethod: HttpMethod, route: string, handler: RequestHandler): void =
+  if not xanderRoutes.hasKey(httpMethod):
+    xanderRoutes[httpMethod] = newRoute()
+  xanderRoutes[httpMethod][route] = handler
 
-# The macros are used to allow simple sinatra-like syntax.
-# Each macro calls 'buildRequestHandlerSource' with their 
-# respective request methods in order to call the correct
-# request handler e.g. addGet, addPost etc.
+proc addGet*(route: string, handler: RequestHandler): void =
+  addRoute(HttpGet, route, handler)
 
-proc buildRequestHandlerSource(reqMethod, route: string, body: untyped): string =
-  var source = &"add{reqMethod}(\"{route}\", proc(req: Request, vars: var Data): Response =\n"
-  for row in repr(body).split("\n"):
+proc addPost*(route: string, handler: RequestHandler): void =
+  addRoute(HttpPost, route, handler)
+
+proc addPut*(route: string, handler: RequestHandler): void =
+  addRoute(HttpPut, route, handler)
+
+proc addDelete*(route: string, handler: RequestHandler): void =
+  addRoute(HttpDelete, route, handler)
+
+# TODO: Build source using Nim Nodes instead of strings
+proc buildRequestHandlerSource(reqMethod, route, body: string): string =
+  var source = &"add{reqMethod}({tools.quote(route)}, {requestHandlerString}{newLine}"
+  for row in body.split(newLine):
     if row.len > 0:
-      source &= &"  {row}\n"
+      source &= &"{tab}{row}{newLine}"
   return source & ")"
 
-macro get*(route: string, body: untyped): typed =
-  parseStmt(buildRequestHandlerSource("Get", repr(route).replace("\"", ""), body))
+macro get*(route: string, body: untyped): void =
+  let requestHandlerSource = buildRequestHandlerSource("Get", unquote(route), repr(body))
+  parseStmt(requestHandlerSource)
 
-macro post*(route: string, body: untyped): typed =
-  parseStmt(buildRequestHandlerSource("Post", repr(route).replace("\"", ""), body))
+macro post*(route: string, body: untyped): void =
+  let requestHandlerSource = buildRequestHandlerSource("Post", unquote(route), repr(body))
+  parseStmt(requestHandlerSource)
 
-macro delete*(route: string, body: untyped): typed =
-  parseStmt(buildRequestHandlerSource("Delete", repr(route).replace("\"", ""), body))
+macro put*(route: string, body: untyped): void =
+  let requestHandlerSource = buildRequestHandlerSource("Put", unquote(route), repr(body))
+  parseStmt(requestHandlerSource)
 
-macro put*(route: string, body: untyped): typed =
-  parseStmt(buildRequestHandlerSource("Put", repr(route).replace("\"", ""), body))
+macro delete*(route: string, body: untyped): void =
+  let requestHandlerSource = buildRequestHandlerSource("Delete", unquote(route), repr(body))
+  parseStmt(requestHandlerSource)
 
-proc display*(text: string, code: HttpCode = Http200): Response =
-  return (text, code)
+# TODO: Dynamically created directories are not supported
+proc addGetForFiles(route: string): void =
+  # Given a route, e.g. '/public', this proc
+  # adds a get method for provided directory and
+  # its child directories. This proc is RECURSIVE.
+  let path = if route.endsWith("/"): route[0..route.len-2] else: route # /public/ => /public
+  let newRoute = path & "/:fileName" # /public/:fileName
+  addGet(newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response = 
+    let filePath = "." & path / decodeUrl(data.get("fileName")) # ./public/.../fileName
+    let ext = splitFile(filePath).ext
+    if existsFile(filePath):
+      headers["Content-Type"] = getContentType(ext)
+      respond readFile(filePath)
+    else: respond Http404)
+  for directory in walkDirs("." & path & "/*"):
+    addGetForFiles(directory[1..directory.len - 1])
 
-proc displayTemplate*(tmplt: string, code: HttpCode = Http200): Response =
-  return (buildPage(tmplt, newData()), code)
-
-proc displayTemplate*(tmplt: string, vars: Data, code: HttpCode = Http200): Response =
-  return (buildPage(tmplt, vars), code)
-
-proc displayJSON*(data: Data | JsonNode | string, code: HttpCode = Http200): Response =
-  return ($data, code)
-
-# TODO
-# FILESERVER
-proc displayFiles*(tmplt, fileDirectory: string, vars: Data, code: HttpCode = Http200): Response =
-  return ($vars, code)
-
-proc displayFiles*(tmplt, fileDirectory: string, code: HttpCode = Http200): Response =
-  displayFiles(tmplt, fileDirectory, newData(), code)
-
-proc setPublicDir*(dir: string) =
-  var dir = dir
-  if dir[0] != '/':
-    dir = '/' & dir
-  publicDir = projectDir & dir
-  if publicDir[publicDir.len - 1] != '/':
-    publicDir = publicDir & '/'
-
-proc setTemplateDir*(dir: string) =
-  var dir = dir
-  if dir[0] != '/':
-    dir = '/' & dir
-  templateDir = projectDir & dir
-  if templateDir[templateDir.len - 1] != '/':
-    templateDir = templateDir & '/'
-
-proc initStatics(root: string) =
-  for file in os.walkFiles(root & "*"):
-    var 
-      fr = "/" & (file.replace(publicDir, "")) # relative file path
-      fp = fr.parentDir() & "/" # file's parent dir
-      f: File
-    if open(f, file, fmRead):
-      statics[fp & fr.extractFilename] = f.readAll()
-      addGet(fp & ":file", proc(req: http.Request, vars: var Data): Response =
-        return (statics[fp & vars["file"].getStr()], Http200))
-      f.close()
-    else:
-      echo "ERROR: Could not read static file ", file
-  for dir in os.walkDirs(root & "*"):
-    initStatics(dir & "/")
-
-proc initTemplates(root: string) =
-  var file: File
-  for filepath in os.walkFiles(root & "*"):
-    if open(file, filepath, fmRead):
-      html[filepath.splitFile.name] = readAll(file)
-      close(file)
-    else:
-      echo "ERROR: Could not read template ", filepath
-  for dir in os.walkDirs(root & "*"):
-    initTemplates(dir & "/")
-
-proc init() =
-  # If the Xander project structure is followed,
-  # this if block will be true
-  if projectDir.extractFilename == "bin":
-    projectDir = projectDir.parentDir
-    publicDir = projectDir & "/public/"
-    templateDir = projectDir & "/app/views/"
-  initStatics(publicDir)
-  initTemplates(templateDir)
-
-proc requestHandler(req: http.Request) {.async.} =
-  # Simply calls 'checkRoutes', but first checks
-  # if the app mode is debug, and if so, initializes
-  # public files and templates.
-  if mode == ApplicationMode.Debug:
-    init()
-  await checkRoutes(req)
-
-proc startServer*() =
-  init()
-  defer: close(server)
-  echo "Web server listening on port ", port
-  async.waitFor server.serve(async.Port(port), requestHandler)
-
-# This should make killing the app with ctrl + c
-# a bit more graceful.
-setControlCHook(proc() {.noconv.} = quit(0))
+proc serveFiles*(route: string): void =
+  let path = applicationDirectory & route
+  addGetForFiles(route)
+  logger.log(lvlInfo, "Serving files from ", path)
 
 when isMainModule:
-  # When the xander binary is is executed,
-  # a set of commands are provided for:
-  #  - creating a new xander project
-  #  - running a xander project
-
-  proc copyDirAndContents(source, destination: string) =
-    createDir(destination)
-    for file in walkFiles(source & "/*"):
-      copyFile(file, destination & "/" & file.extractFilename)
-    for dir in walkDirs(source & "/*"):
-      copyDirAndContents(dir, destination & "/" & dir.extractFilename)
-  
-  proc newApp(appName: string) =
-    copyDirAndContents(getAppDir() & "/src/xander/project", getCurrentDir() & "/" & appName)
-  
-  proc runApp() =
-    # Compiles the project into the 'bin' folder, and
-    # runs the project with hints set off.
-    var 
-      currentDir = getCurrentDir()
-      appNim = currentDir & "/app.nim"
-      appExe = currentDir & "/bin/www"
-      cmd = "nim c -r --out:" & appExe & " --hints:off --verbosity:0 --threads:on "
-    if os.fileExists(appNim):
-      discard os.execShellCmd(cmd & appNim)
-    else:
-      echo "ERROR: Could not find 'app.nim' in ", currentDir
-  
-  if os.paramCount() >= 1:
-    var params = os.commandLineParams()
-    case params[0]:
-      of "new":
-        if os.paramCount() > 1:
-          newApp(params[1])
-        else:
-          echo "ERROR: Provide app name!"
-      of "run":
-        runApp()
-      else:
-        echo "ERROR: unknown command: ", params[0]
+  # TODO: stuff
+  # TODO: project creation etc.
+  discard

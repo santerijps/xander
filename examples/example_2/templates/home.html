@@ -1,0 +1,33 @@
+<h2>Home</h2>
+
+<hr>
+
+<p>You are now logged in as {[username]}!</p>
+
+<button>Log out</button>
+
+<hr>
+
+<img height="300" src="/public/images/road.jpg"/>
+
+<hr>
+
+<video height="300" autoplay="true" controls="true">
+  <source src="/public/videos/burger.webm" type="video/webm">
+</video>
+
+<script>
+  document.querySelector('button').addEventListener('click', () => {
+    fetch("/logout", {
+      method: "POST",
+      body: JSON.stringify({
+        logout: true
+      })
+    }).then(r => r.json())
+    .then(json => {
+      if(json.redirect === true) {
+        if(confirm("Log out?")) window.location.href = "/"
+      }
+    })
+  })
+</script>

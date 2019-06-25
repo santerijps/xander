@@ -1,0 +1,40 @@
+<h2>Index</h2>
+
+<hr>
+
+<p>Link with url parameters</p>
+<a href="/person/Adam">Adam's Page</a>
+
+<hr>
+
+<p>Log in</p>
+<form method="POST" action="/login">
+  <input type="text" name="username" placeholder="username" value="{[oldUser]}">
+  <input type="password" name="password" placeholder="password">
+  <button type="submit">Log in</button>
+</form>
+
+<p style="color: red;">{[loginErrors]}</p>
+
+<hr>
+
+<p>Register</p>
+<form method="POST" action="/register">
+  <input type="text" name="username" placeholder="username">
+  <input type="password" name="password" placeholder="password">
+  <button type="submit">Register</button>
+</form>
+
+<hr>
+
+<p>File Upload</p>
+<form method="POST" action="/upload" enctype="multipart/form-data">
+  <input type="file" name="upload" multiple>
+  <input type="text" name="message" value="Take these!">
+  <input type="submit" value="Upload File">
+</form>
+
+<hr>
+
+<p>Uploaded files on server</p>
+{[UploadedFiles]}
