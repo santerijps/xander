@@ -243,7 +243,7 @@ proc hasSubdomain(host: string, subdomain: var string): bool =
 proc handleSubdomain(request: Request): string =
   result = request.url.path
   var subdomain: string
-  if hasSubdomain(request.headers["host"], subdomain):
+  if request.headers.hasKey("host") and hasSubdomain(request.headers["host"], subdomain):
     result = subdomain & "." & result
 
 proc checkPath(request: Request, kind: string, data: var Data, files: var UploadFiles): bool =
