@@ -282,6 +282,11 @@ proc getSession(cookies: var Cookies, session: var Session): string =
       session = sessions[ssid]  
   return ssid
 
+proc setDefaultHeaders(headers: var HttpHeaders): void =
+  headers["Cache-Control"] = "public; max-age=" & $(60*60*24*7) # One week
+  headers["Connection"] = "Keep-Alive"
+  headers["Server"] = "xander"
+
 proc onRequest*(request: Request): Future[void] {.gcsafe.} =
   # TODO: Check that request size <= server max allowed size
   # Called on each request to server
@@ -303,6 +308,8 @@ proc onRequest*(request: Request): Future[void] {.gcsafe.} =
           cookies.setClient(key, val)
         # Create or get session and session ID
         let ssid = getSession(cookies, session)
+        # Set default headers
+        setDefaultHeaders(headers)
         # Developer request handler response
         var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
         # Update session
@@ -381,7 +388,6 @@ proc serveFiles*(route: string): void =
     let ext = splitFile(filePath).ext
     if existsFile(filePath):
       headers["Content-Type"] = getContentType(ext)
-      headers["Cache-Control"] = "public; max-age=" & $(60*60*24*7)
       respond readFile(filePath)
     else: respond Http404)
   for directory in walkDirs("." & path & "/*"):
