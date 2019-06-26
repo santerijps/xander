@@ -381,6 +381,7 @@ proc serveFiles*(route: string): void =
     let ext = splitFile(filePath).ext
     if existsFile(filePath):
       headers["Content-Type"] = getContentType(ext)
+      headers["Cache-Control"] = "public; max-age=" & $(60*60*24*7)
       respond readFile(filePath)
     else: respond Http404)
   for directory in walkDirs("." & path & "/*"):
