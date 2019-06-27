@@ -17,15 +17,15 @@ import
   tables,
   times,
   typetraits,
-  uri,
-  zip/zlib
+  uri
 
 import # Local imports
   xander/constants,
   xander/contenttype,
   xander/templating,
   xander/tools,
-  xander/types
+  xander/types,
+  xander/zip/zlib_modified
 
 export # TODO: What really needs to be exported???
   async,
@@ -290,14 +290,14 @@ proc setDefaultHeaders(headers: var HttpHeaders): void =
   headers["server"] = "xander"
 
 proc gzip(response: var Response, request: Request, headers: var HttpHeaders): void =
-  # To get the compress proc to work, I needed to change the
-  # definiton of Type Ulong in zip/zlib.nim to uint (was uint32)
-  if "gzip" in request.headers["accept-encoding"]:
-    try:
-      response.body = compress(response.body, response.body.len, Z_DEFLATED)
-      headers["content-encoding"] = "gzip"
-    except:
-      logger.log(lvlError, "Failed to gzip compress. Did you set 'Type Ulong* = uint'?")
+  if request.headers.hasKey("accept-encoding"):
+    if "gzip" in request.headers["accept-encoding"]:
+      try:
+        # Uses a modified version of zip/zlib.nim
+        response.body = compress(response.body, response.body.len, Z_DEFLATED)
+        headers["content-encoding"] = "gzip"
+      except:
+        logger.log(lvlError, "Failed to gzip compress. Did you set 'Type Ulong* = uint'?")
 
 proc onRequest*(request: Request): Future[void] {.gcsafe.} =
   # TODO: Check that request size <= server max allowed size
