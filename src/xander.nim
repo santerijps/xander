@@ -285,10 +285,19 @@ proc getSession(cookies: var Cookies, session: var Session): string =
   return ssid
 
 proc setDefaultHeaders(headers: var HttpHeaders): void =
-  headers["cache-control"] = "public; max-age=" & $(60*60*24*7) # One week
-  #headers["connection"] = "keep-alive"
-  headers["server"] = "xander"
+  headers["Cache-Control"] = "public; max-age=" & $(60*60*24*7) # One week
+  headers["Connection"] = "keep-alive"
+  headers["Content-Type"] = "text/html; charset=UTF-8"
+  headers["Content-Security-Policy"] = "script-src 'self'"
+  headers["Feature-Policy"] = "vibrate 'none'"
+  headers["Referrer-Policy"] = "no-referrer"
+  headers["Server"] = "xander"
+  headers["Vary"] = "User-Agent, Accept-Encoding"
+  headers["X-Content-Type-Options"] = "nosniff"
+  headers["X-Frame-Options"] = "DENY"
+  headers["X-XSS-Protection"] = "1; mode=block"
 
+# TODO: Some say .pngs should not be compressed
 proc gzip(response: var Response, request: Request, headers: var HttpHeaders): void =
   if request.headers.hasKey("accept-encoding"):
     if "gzip" in request.headers["accept-encoding"]:
@@ -324,6 +333,9 @@ proc onRequest*(request: Request): Future[void] {.gcsafe.} =
         setDefaultHeaders(headers)
         # Developer request handler response
         var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
+        # TODO: Fix the way content type is determined
+        if "text/html" in headers["Content-Type"] and not("<!DOCTYPE html>" in response.body):
+          headers["Content-Type"] = "text/plain; charset=UTF-8"
         # gzip encode if needed
         gzip(response, request, headers)
         # Update session
