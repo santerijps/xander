@@ -4,20 +4,21 @@ import
   asynchttpserver as http,
   cookies as cookies_module,
   base64,
-  hashes,
   json,
   logging,
   macros,
   os,
   random,
   regex,
+  std/sha1,
   strformat,
   strtabs,
   strutils,
   tables,
   times,
   typetraits,
-  uri
+  uri,
+  zip/zlib
 
 import # Local imports
   xander/constants,
@@ -266,8 +267,9 @@ proc checkPath(request: Request, kind: string, data: var Data, files: var Upload
             data = parseRequestBody(request.body)
 
 # TODO: This is not very random
-proc generateSessionId(): Hash =  
-  hash(cpuTime() + rand(10000).float)
+# SHA-1 Hash
+proc generateSessionId(): string =
+  $secureHash($(cpuTime() + rand(10000).float))
 
 proc getSession(cookies: var Cookies, session: var Session): string =
   # Gets a session if one exists. Initializes a new one if it doesn't.
@@ -283,9 +285,19 @@ proc getSession(cookies: var Cookies, session: var Session): string =
   return ssid
 
 proc setDefaultHeaders(headers: var HttpHeaders): void =
-  headers["Cache-Control"] = "public; max-age=" & $(60*60*24*7) # One week
-  headers["Connection"] = "Keep-Alive"
-  headers["Server"] = "xander"
+  headers["cache-control"] = "public; max-age=" & $(60*60*24*7) # One week
+  #headers["connection"] = "keep-alive"
+  headers["server"] = "xander"
+
+proc gzip(response: var Response, request: Request, headers: var HttpHeaders): void =
+  # To get the compress proc to work, I needed to change the
+  # definiton of Type Ulong in zip/zlib.nim to uint (was uint32)
+  if "gzip" in request.headers["accept-encoding"]:
+    try:
+      response.body = compress(response.body, response.body.len, Z_DEFLATED)
+      headers["content-encoding"] = "gzip"
+    except:
+      logger.log(lvlError, "Failed to gzip compress. Did you set 'Type Ulong* = uint'?")
 
 proc onRequest*(request: Request): Future[void] {.gcsafe.} =
   # TODO: Check that request size <= server max allowed size
@@ -312,6 +324,8 @@ proc onRequest*(request: Request): Future[void] {.gcsafe.} =
         setDefaultHeaders(headers)
         # Developer request handler response
         var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
+        # gzip encode if needed
+        gzip(response, request, headers)
         # Update session
         sessions[ssid] = session
         # Cookies set on server => add them to headers
@@ -323,12 +337,12 @@ proc onRequest*(request: Request): Future[void] {.gcsafe.} =
         return request.respond(response.httpCode, response.body, response.headers)
   serveError(request, Http404)
 
+# TODO: Check port range
 proc runForever*(port: uint = 3000, message: string = "Xander server is up and running!"): void =
   logger.log(lvlInfo, message)
-  let port: Port = Port(port)
   defer: close(xanderServer)
   readTemplates(templateDirectory, templates)
-  waitFor xanderServer.serve(port, onRequest)
+  waitFor xanderServer.serve(Port(port), onRequest)
 
 proc getServer*(): AsyncHttpServer =
   readTemplates(templateDirectory, templates)
