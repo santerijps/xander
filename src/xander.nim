@@ -286,7 +286,7 @@ proc getSession(cookies: var Cookies, session: var Session): string =
   if not cookies.contains("XANDER-SSID"):
     ssid = $generateSessionId()
     sessions[ssid] = session
-    cookies.set("XANDER-SSID", ssid)
+    cookies.set("XANDER-SSID", ssid, httpOnly = true)
   else:
     ssid = cookies.get("XANDER-SSID")
     if sessions.hasKey(ssid):

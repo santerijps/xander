@@ -18,7 +18,7 @@ type
     secure: bool
     httpOnly: bool
 
-func newCookie*(name, value, domain, path, expires = "", secure = false, httpOnly = true): Cookie =
+func newCookie*(name, value, domain, path, expires = "", secure, httpOnly = false): Cookie =
   return (name, value, domain, path, expires, secure, httpOnly)
 
 type
@@ -40,7 +40,7 @@ func set*(cookies: var Cookies, c: Cookie): void =
   let cookieName = c.name
   cookies.server[cookieName] = c
 
-func set*(cookies: var Cookies, name, value, domain, path, expires = "", secure = false, httpOnly = true): void =
+func set*(cookies: var Cookies, name, value, domain, path, expires = "", secure, httpOnly = false): void =
   cookies.server[name] = newCookie(name, value, domain, path, expires, secure, httpOnly)
 
 func contains*(cookies: var Cookies, cookieName: string): bool =
