@@ -25,6 +25,13 @@ xander injects variables for the developer to use in request handlers. These var
 - session, client specific session variables
 - files, uploaded files
 
+```nim
+# Request Handler definition
+type
+  RequestHandler* =
+    proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response {.gcsafe.}
+```
+
 These variables do a lot of the legwork required in an effective web application.
 
 ## Serving files

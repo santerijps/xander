@@ -252,19 +252,18 @@ proc checkPath(request: Request, kind: string, data: var Data, files: var Upload
   # and gets the url parameters. For other requests, the request body is parsed.
   # The 'kind' parameter is an existing route.
   let path = handleSubdomain(request)
-  if xanderRoutes.hasKey(request.reqMethod):
-    if request.reqMethod == HttpGet: # URL parameters
-      result = isValidGetPath(path, kind, data)
-    else: # Form body
-      let contentType = request.headers["Content-Type"].split(";") # TODO: Use me wisely to detemine how to parse request body
-      if path == kind:
-        result = true
-        if request.body.len > 0:
-          if "multipart/form-data" in contentType: # File upload
-            let boundary = "--" & contentType[1].split("=")[1]
-            parseFormMultiPart(request.body, boundary, data, files)
-          else: # Other
-            data = parseRequestBody(request.body)
+  if request.reqMethod == HttpGet: # URL parameters
+    result = isValidGetPath(path, kind, data)
+  else: # Form body
+    let contentType = request.headers["Content-Type"].split(";") # TODO: Use me wisely to detemine how to parse request body
+    if path == kind:
+      result = true
+      if request.body.len > 0:
+        if "multipart/form-data" in contentType: # File upload
+          let boundary = "--" & contentType[1].split("=")[1]
+          parseFormMultiPart(request.body, boundary, data, files)
+        else: # Other
+          data = parseRequestBody(request.body)
 
 proc setResponseCookies*(response: var Response, cookies: Cookies): void =
   for key, cookie in cookies.server:
@@ -328,32 +327,33 @@ proc gzip(response: var Response, request: Request, headers: var HttpHeaders): v
 # Called on each request to server
 proc onRequest*(request: Request): Future[void] {.gcsafe.} =
   var (data, headers, cookies, session, files) = newRequestHandlerVariables()
-  for route in xanderRoutes[request.reqMethod].keys:
-    if checkPath(request, route, data, files):
-      # Get URL query parameters
-      parseUrlQuery(request.url.query, data)
-      # Parse cookies from header
-      let parsedCookies = parseCookies(request.headers.getOrDefault("Cookie"))
-      # Cookies sent from client
-      for key, val in parsedCookies.pairs:
-        cookies.setClient(key, val)
-      # Create or get session and session ID
-      let ssid = getSession(cookies, session)
-      # Set default headers
-      setDefaultHeaders(headers)
-      # Request handler response
-      var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
-      # TODO: Fix the way content type is determined
-      setContentTypeToTextPlainIfNeeded(response, headers)
-      # gzip encode if needed
-      gzip(response, request, headers)
-      # Update session
-      sessions[ssid] = session
-      # Cookies set on server => add them to headers
-      setResponseCookies(response, cookies)
-      # Put headers into response
-      setResponseHeaders(response, headers)
-      return request.respond(response.httpCode, response.body, response.headers)
+  if xanderRoutes.hasKey(request.reqMethod):
+    for route in xanderRoutes[request.reqMethod].keys:
+      if checkPath(request, route, data, files):
+        # Get URL query parameters
+        parseUrlQuery(request.url.query, data)
+        # Parse cookies from header
+        let parsedCookies = parseCookies(request.headers.getOrDefault("Cookie"))
+        # Cookies sent from client
+        for key, val in parsedCookies.pairs:
+          cookies.setClient(key, val)
+        # Create or get session and session ID
+        let ssid = getSession(cookies, session)
+        # Set default headers
+        setDefaultHeaders(headers)
+        # Request handler response
+        var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
+        # TODO: Fix the way content type is determined
+        setContentTypeToTextPlainIfNeeded(response, headers)
+        # gzip encode if needed
+        gzip(response, request, headers)
+        # Update session
+        sessions[ssid] = session
+        # Cookies set on server => add them to headers
+        setResponseCookies(response, cookies)
+        # Put headers into response
+        setResponseHeaders(response, headers)
+        return request.respond(response.httpCode, response.body, response.headers)
   serveError(request, Http404)
 
 # TODO: Check port range

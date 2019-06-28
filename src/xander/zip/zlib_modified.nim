@@ -1,4 +1,6 @@
 # Modified for xander-nim
+# type Ulong must be uint to work with xander
+# (was uint32 previously)
 
 # Converted from Pascal
 
