@@ -15,9 +15,11 @@ type
     domain: string
     path: string
     expires: string
+    secure: bool
+    httpOnly: bool
 
-func newCookie*(name, value, domain, path, expires: string = ""): Cookie =
-  return (name, value, domain, path, expires)
+func newCookie*(name, value, domain, path, expires = "", secure = false, httpOnly = true): Cookie =
+  return (name, value, domain, path, expires, secure, httpOnly)
 
 type
   Cookies* = tuple
@@ -38,8 +40,8 @@ func set*(cookies: var Cookies, c: Cookie): void =
   let cookieName = c.name
   cookies.server[cookieName] = c
 
-func set*(cookies: var Cookies, name, value, domain, path, expires: string = ""): void =
-  cookies.server[name] = newCookie(name, value, domain, path, expires)
+func set*(cookies: var Cookies, name, value, domain, path, expires = "", secure = false, httpOnly = true): void =
+  cookies.server[name] = newCookie(name, value, domain, path, expires, secure, httpOnly)
 
 func contains*(cookies: var Cookies, cookieName: string): bool =
   cookies.client.hasKey(cookieName)

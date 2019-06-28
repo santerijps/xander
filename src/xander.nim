@@ -268,7 +268,8 @@ proc checkPath(request: Request, kind: string, data: var Data, files: var Upload
 proc setResponseCookies*(response: var Response, cookies: Cookies): void =
   for key, cookie in cookies.server:
     response.headers.add("Set-Cookie", 
-      cookies_module.setCookie(cookie.name, cookie.value, cookie.domain, cookie.path, cookie.expires, true))
+      cookies_module.setCookie(
+        cookie.name, cookie.value, cookie.domain, cookie.path, cookie.expires, true, cookie.secure, cookie.httpOnly))
 
 # TODO: This is not very random
 # SHA-1 Hash
