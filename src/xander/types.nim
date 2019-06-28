@@ -147,9 +147,21 @@ func newUploadFiles*(): UploadFiles =
   return initTable[string, seq[UploadFile]]()
 
 type
+  RequestHandlerVariables* = tuple
+    data: Data
+    headers: HttpHeaders
+    cookies: Cookies
+    session: Session
+    files: UploadFiles
+
+func newRequestHandlerVariables*(): RequestHandlerVariables =
+  (newData(), newHttpHeaders(), newCookies(), newSession(), newUploadFiles())
+  
+type
   RequestHandler* =
     proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response {.gcsafe.}
-
+    # TODO: Would below work?
+    #proc(request: Request, X: var RequestHandlerVariables): Response {.gcsafe.}
 type
   Route* = Table[string, RequestHandler]
   RoutingTable* = Table[HttpMethod, Route]

@@ -266,10 +266,19 @@ proc checkPath(request: Request, kind: string, data: var Data, files: var Upload
           else: # Other
             data = parseRequestBody(request.body)
 
+proc setResponseCookies*(response: var Response, cookies: Cookies): void =
+  for key, cookie in cookies.server:
+    response.headers.add("Set-Cookie", 
+      cookies_module.setCookie(cookie.name, cookie.value, cookie.domain, cookie.path, cookie.expires, true))
+
 # TODO: This is not very random
 # SHA-1 Hash
 proc generateSessionId(): string =
   $secureHash($(cpuTime() + rand(10000).float))
+
+proc setResponseHeaders(response: var Response, headers: HttpHeaders): void =
+  for key, val in headers.pairs:
+    response.headers.add(key, val)
 
 proc getSession(cookies: var Cookies, session: var Session): string =
   # Gets a session if one exists. Initializes a new one if it doesn't.
@@ -284,12 +293,19 @@ proc getSession(cookies: var Cookies, session: var Session): string =
       session = sessions[ssid]  
   return ssid
 
+# The default content-type header is text/html.
+# If the request handler returns nothing but text,
+# content-type should be text/plain
+proc setContentTypeToTextPlainIfNeeded(response: Response, headers: var HttpHeaders): void =
+  if "text/html" in headers["Content-Type"] and not("<!DOCTYPE html>" in response.body):
+    headers["Content-Type"] = "text/plain; charset=UTF-8"
+
 proc setDefaultHeaders(headers: var HttpHeaders): void =
   headers["Cache-Control"] = "public; max-age=" & $(60*60*24*7) # One week
   headers["Connection"] = "keep-alive"
   headers["Content-Type"] = "text/html; charset=UTF-8"
   headers["Content-Security-Policy"] = "script-src 'self'"
-  headers["Feature-Policy"] = "vibrate 'none'"
+  headers["Feature-Policy"] = "autoplay 'none'"
   headers["Referrer-Policy"] = "no-referrer"
   headers["Server"] = "xander"
   headers["Vary"] = "User-Agent, Accept-Encoding"
@@ -308,45 +324,36 @@ proc gzip(response: var Response, request: Request, headers: var HttpHeaders): v
       except:
         logger.log(lvlError, "Failed to gzip compress. Did you set 'Type Ulong* = uint'?")
 
+# TODO: Check that request size <= server max allowed size
+# Called on each request to server
 proc onRequest*(request: Request): Future[void] {.gcsafe.} =
-  # TODO: Check that request size <= server max allowed size
-  # Called on each request to server
-  var 
-    data: Data = newData()
-    headers: HttpHeaders = newHttpHeaders()
-    cookies: Cookies = newCookies()
-    session: Session = newSession()
-    files: UploadFiles = newUploadFiles()
-  if xanderRoutes.hasKey(request.reqMethod):
-    for route in xanderRoutes[request.reqMethod].keys:
-      if checkPath(request, route, data, files):
-        # Get URL query parameters
-        parseUrlQuery(request.url.query, data)
-        # Parse cookies from header
-        let parsedCookies: StringTableRef = parseCookies(request.headers.getOrDefault("Cookie"))
-        # Cookies sent from client
-        for key, val in parsedCookies.pairs:
-          cookies.setClient(key, val)
-        # Create or get session and session ID
-        let ssid = getSession(cookies, session)
-        # Set default headers
-        setDefaultHeaders(headers)
-        # Developer request handler response
-        var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
-        # TODO: Fix the way content type is determined
-        if "text/html" in headers["Content-Type"] and not("<!DOCTYPE html>" in response.body):
-          headers["Content-Type"] = "text/plain; charset=UTF-8"
-        # gzip encode if needed
-        gzip(response, request, headers)
-        # Update session
-        sessions[ssid] = session
-        # Cookies set on server => add them to headers
-        for key, cookie in cookies.server:
-          response.headers.add("Set-Cookie", cookies_module.setCookie(cookie.name, cookie.value, cookie.domain, cookie.path, cookie.expires, true))
-        # Put headers into response
-        for key, val in headers.pairs:
-          response.headers.add(key, val)
-        return request.respond(response.httpCode, response.body, response.headers)
+  var (data, headers, cookies, session, files) = newRequestHandlerVariables()
+  for route in xanderRoutes[request.reqMethod].keys:
+    if checkPath(request, route, data, files):
+      # Get URL query parameters
+      parseUrlQuery(request.url.query, data)
+      # Parse cookies from header
+      let parsedCookies = parseCookies(request.headers.getOrDefault("Cookie"))
+      # Cookies sent from client
+      for key, val in parsedCookies.pairs:
+        cookies.setClient(key, val)
+      # Create or get session and session ID
+      let ssid = getSession(cookies, session)
+      # Set default headers
+      setDefaultHeaders(headers)
+      # Request handler response
+      var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
+      # TODO: Fix the way content type is determined
+      setContentTypeToTextPlainIfNeeded(response, headers)
+      # gzip encode if needed
+      gzip(response, request, headers)
+      # Update session
+      sessions[ssid] = session
+      # Cookies set on server => add them to headers
+      setResponseCookies(response, cookies)
+      # Put headers into response
+      setResponseHeaders(response, headers)
+      return request.respond(response.httpCode, response.body, response.headers)
   serveError(request, Http404)
 
 # TODO: Check port range
