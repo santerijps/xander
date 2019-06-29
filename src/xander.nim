@@ -30,6 +30,7 @@ import # Local imports
 export # TODO: What really needs to be exported???
   async,
   cookies_module,
+  contenttype,
   http,
   json,
   os,
@@ -54,8 +55,9 @@ var # Global variables
   # Logger
   logger {.threadvar.} : Logger
 
-applicationDirectory = getAppDir()
-templateDirectory = applicationDirectory & "/templates/"
+let appDir = getAppDir()
+applicationDirectory = if appDir.extractFilename == "bin": appDir.parentDir() else: appDir
+templateDirectory = applicationDirectory / "templates"
 sessions = newSessions()
 templates = newDictionary()
 fileServers = newSeq[string]()
@@ -111,6 +113,11 @@ func respond*(body: string, httpCode: HttpCode = Http200, headers = newHttpHeade
 
 proc respond*(data: Data, httpCode = Http200, headers = newHttpHeaders()): Response =
   return ($data, httpCode, headers)
+
+# TODO
+proc respond*(file: UploadFile, httpCode = Http200, headers = newHttpHeaders()): Response =
+  headers["Content-Type"] = getContentType(file.ext)
+  return (file.content, httpCode, headers)
 
 proc redirect*(path: string, content = "", delay = 0, httpCode = Http303): Response =
   var headers: HttpHeaders
@@ -293,17 +300,15 @@ proc getSession(cookies: var Cookies, session: var Session): string =
       session = sessions[ssid]  
   return ssid
 
-# The default content-type header is text/html.
-# If the request handler returns nothing but text,
-# content-type should be text/plain
-proc setContentTypeToTextPlainIfNeeded(response: Response, headers: var HttpHeaders): void =
-  if "text/html" in headers["Content-Type"] and not("<!DOCTYPE html>" in response.body):
-    headers["Content-Type"] = "text/plain; charset=UTF-8"
+# The default content-type header is text/plain.
+proc setContentTypeToHTMLIfNeeded(response: Response, headers: var HttpHeaders): void =
+  if "<!DOCTYPE html>" in response.body:
+    headers["Content-Type"] = "text/html; charset=UTF-8"
 
 proc setDefaultHeaders(headers: var HttpHeaders): void =
   headers["Cache-Control"] = "public; max-age=" & $(60*60*24*7) # One week
   headers["Connection"] = "keep-alive"
-  headers["Content-Type"] = "text/html; charset=UTF-8"
+  headers["Content-Type"] = "text/plain; charset=UTF-8"
   headers["Content-Security-Policy"] = "script-src 'self'"
   headers["Feature-Policy"] = "autoplay 'none'"
   headers["Referrer-Policy"] = "no-referrer"
@@ -345,7 +350,7 @@ proc onRequest*(request: Request): Future[void] {.gcsafe.} =
         # Request handler response
         var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
         # TODO: Fix the way content type is determined
-        setContentTypeToTextPlainIfNeeded(response, headers)
+        setContentTypeToHTMLIfNeeded(response, headers)
         # gzip encode if needed
         gzip(response, request, headers)
         # Update session
@@ -364,6 +369,7 @@ proc runForever*(port: uint = 3000, message: string = "Xander server is up and r
   readTemplates(templateDirectory, templates)
   waitFor xanderServer.serve(Port(port), onRequest)
 
+# TODO: Remove this or use this
 proc getServer*(): AsyncHttpServer =
   readTemplates(templateDirectory, templates)
   return xanderServer
@@ -428,5 +434,4 @@ proc serveFiles*(route: string): void =
     serveFiles(directory[1..directory.len - 1])
 
 when isMainModule:
-  # TODO: project creation etc.
-  discard
+  echo "Nothing to see here"

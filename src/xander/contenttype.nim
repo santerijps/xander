@@ -1,4 +1,10 @@
-func getContentType*(ext: string, charset = "utf-8"): string =
+import
+  strutils
+
+func getContentType*(ext: string, charset = "UTF-8"): string =
+  var ext = ext
+  if not(startsWith(ext, '.')):
+    ext = '.' & ext
   result = case ext:
     of ".aac":
       "audio/aac"
