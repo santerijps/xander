@@ -126,8 +126,8 @@ proc redirect*(path: string, content = "", delay = 0, httpCode = Http303): Respo
     headers = newHttpHeaders([("refresh", &"{delay};url=\"{path}\"")])
   return (content, httpCode, headers)
 
-proc serve(request: Request, httpCode: HttpCode, content: string = ""): Future[void] {.async.} =
-  await request.respond(httpCode, "")
+proc serve(request: Request, httpCode: HttpCode, content = "", headers = newHttpHeaders()): Future[void] {.async.} =
+  await request.respond(httpCode, content, headers)
 
 proc serveError(request: Request, httpCode: HttpCode = Http500, message: string = ""): Future[void] {.async.} =
   var content = message
