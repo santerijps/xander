@@ -164,6 +164,7 @@ type
     proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response {.gcsafe.}
     # TODO: Would below work?
     #proc(request: Request, X: var RequestHandlerVariables): Response {.gcsafe.}
+
 type
   Route* = Table[string, RequestHandler]
   RoutingTable* = Table[HttpMethod, Route]
@@ -179,4 +180,3 @@ func `$`*(routingTable: RoutingTable): string =
     result &= $httpMethod
     for r, m in route.pairs:
       result &= newLine & tab & r
-  

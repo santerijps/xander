@@ -105,16 +105,15 @@ proc html*(content: string): string =
   # Let's the browser know that the response should be treated as HTML
   "<!DOCTYPE html><meta charset=\"utf-8\">\n" & content
 
-func respond*(httpCode: HttpCode = Http200, body: string = "", headers: HttpHeaders = newHttpHeaders()): Response =
-  return (body, httpCode, headers)
+proc respond*(httpCode = Http200, content = "", headers = newHttpHeaders()): Response =
+  return (content, httpCode, headers)
 
-func respond*(body: string, httpCode: HttpCode = Http200, headers = newHttpHeaders()): Response =
-  return (body, httpCode, headers)
+proc respond*(content: string, httpCode = Http200, headers = newHttpHeaders()): Response =
+  return (content, httpCode, headers)
 
 proc respond*(data: Data, httpCode = Http200, headers = newHttpHeaders()): Response =
   return ($data, httpCode, headers)
 
-# TODO
 proc respond*(file: UploadFile, httpCode = Http200, headers = newHttpHeaders()): Response =
   headers["Content-Type"] = getContentType(file.ext)
   return (file.content, httpCode, headers)
@@ -244,7 +243,9 @@ proc hasSubdomain(host: string, subdomain: var string): bool =
   let domains = host.split('.')
   let count = domains.len
   if count > 1: # ["api", "mysite", "com"] ["mysite", "com"] ["api", "localhost"]
-    if (count >= 3) or (count == 2 and domains[1].split(":")[0] == "localhost"):
+    if count == 3 and domains[0] == "www":
+      result = false  
+    elif (count >= 3) or (count == 2 and domains[1].split(":")[0] == "localhost"):
       subdomain = domains[0]
       result = true
 
@@ -331,7 +332,7 @@ proc gzip(response: var Response, request: Request, headers: var HttpHeaders): v
 
 # TODO: Check that request size <= server max allowed size
 # Called on each request to server
-proc onRequest*(request: Request): Future[void] {.gcsafe.} =
+proc onRequest(request: Request): Future[void] {.gcsafe.} =
   var (data, headers, cookies, session, files) = newRequestHandlerVariables()
   if xanderRoutes.hasKey(request.reqMethod):
     for route in xanderRoutes[request.reqMethod].keys:
@@ -423,7 +424,7 @@ proc serveFiles*(route: string): void =
   logger.log(lvlInfo, "Serving files from ", applicationDirectory & route)
   let path = if route.endsWith("/"): route[0..route.len-2] else: route # /public/ => /public
   let newRoute = path & "/:fileName" # /public/:fileName
-  addGet(newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response = 
+  addGet(newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response {.gcsafe.} = 
     let filePath = "." & path / decodeUrl(data.get("fileName")) # ./public/.../fileName
     let ext = splitFile(filePath).ext
     if existsFile(filePath):
