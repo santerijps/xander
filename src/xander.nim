@@ -328,6 +328,7 @@ proc gzip(response: var Response, request: Request, headers: var HttpHeaders): v
         response.body = compress(response.body, response.body.len, Z_DEFLATED)
         headers["content-encoding"] = "gzip"
       except:
+        # Deprecated, since the modified version is used
         logger.log(lvlError, "Failed to gzip compress. Did you set 'Type Ulong* = uint'?")
 
 # TODO: Check that request size <= server max allowed size
@@ -372,7 +373,7 @@ proc runForever*(port: uint = 3000, message: string = "Xander server is up and r
 
 # TODO: Remove this or use this
 proc getServer*(): AsyncHttpServer =
-  readTemplates(templateDirectory, templates)
+  #readTemplates(templateDirectory, templates)
   return xanderServer
 
 proc addRoute*(httpMethod: HttpMethod, route: string, handler: RequestHandler): void =
@@ -416,6 +417,62 @@ macro delete*(route: string, body: untyped): void =
   let requestHandlerSource = buildRequestHandlerSource("Delete", unquote(route), repr(body))
   parseStmt(requestHandlerSource)
 
+proc startsWithRequestMethod(s: string): bool =
+  let methods = @["get", "post", "put", "delete"]
+  for m in methods:
+    if s.startsWith(m):
+      return true
+
+proc reformatRouterCode(path, body: string): string =
+  for line in body.split(newLine):
+    var lineToAdd = line & newLine
+    if line.len > 0 and ':' in line:
+      if startsWithRequestMethod(line):
+        let requestHandlerDefinition = line.split(" ")
+        let requestMethod = requestHandlerDefinition[0]
+        var route = requestHandlerDefinition[1]
+        if route == "\"/\":":
+          route = "\"\""
+          route = route[0] & path & route[1..route.len - 1]
+          lineToAdd = requestMethod & " " & route & ":" & newLine
+        elif route.startsWith('"') and route.endsWith("\":") and route[1] == '/':
+          route = route[0] & path & route[1..route.len - 1]
+          lineToAdd = requestMethod & " " & route & newLine
+    result &= lineToAdd
+
+macro router*(route, body: untyped): void =
+  let path = repr(route).unquote
+  let body = reformatRouterCode(path, repr(body))
+  parseStmt(body)
+
+proc reformatSubdomainCode(name, body: string): string =
+  for line in body.split(newLine):
+    var lineToAdd = line & newLine
+    if line.len > 0 and ':' in line:
+      # request handler
+      if startsWithRequestMethod(line):
+        let requestHandlerDefinition = line.split(" ")
+        let requestMethod = requestHandlerDefinition[0]
+        var route = requestHandlerDefinition[1]
+        if route.startsWith('"') and route.endsWith("\":") and route[1] == '/':
+          route = route[0] & name & '.' & route[1..route.len - 1]
+          lineToAdd = requestMethod & " " & route & newLine
+      # router
+      elif line.startsWith("router"):
+        let routerDefinition = line.split(" ")
+        var route = routerDefinition[1].replace(":", "")
+        if route.startsWith('"') and route.endsWith('"') and route[1] == '/':
+          route = route[0] & name & '.' & route[1..route.len - 1]
+          lineToAdd = "router " & route & ":" & newLine
+    # Append line to result
+    result &= lineToAdd
+
+macro subdomain*(name, body: untyped): void =
+  let name = repr(name).unquote.toLower
+  let body =  reformatSubdomainCode(name, repr(body))
+  parseStmt(body)
+
+  
 # TODO: Dynamically created directories are not supported
 proc serveFiles*(route: string): void =
   # Given a route, e.g. '/public', this proc
