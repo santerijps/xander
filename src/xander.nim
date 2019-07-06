@@ -51,7 +51,7 @@ var # Global variables
   fileServers {.threadvar.} : seq[string]
   # Fundamental server variables
   xanderServer {.threadvar.} : AsyncHttpServer
-  xanderRoutes {.threadvar.} : RoutingTable
+  xanderRoutes {.threadvar.} : Hosts
   # Logger
   logger {.threadvar.} : Logger
 
@@ -62,7 +62,7 @@ sessions = newSessions()
 templates = newDictionary()
 fileServers = newSeq[string]()
 xanderServer = newAsyncHttpServer(maxBody = 2147483647) # 32 bits MAXED
-xanderRoutes = newRoutingTable()
+xanderRoutes = newHosts()
 logger = newConsoleLogger(fmtStr="[$time] - XANDER($levelname) ")
 
 proc setTemplateDirectory*(path: string): void =
@@ -249,22 +249,15 @@ proc hasSubdomain(host: string, subdomain: var string): bool =
       subdomain = domains[0]
       result = true
 
-proc handleSubdomain(request: Request): string =
-  result = request.url.path
-  var subdomain: string
-  if request.headers.hasKey("host") and hasSubdomain(request.headers["host"], subdomain):
-    result = subdomain & "." & result
-
 proc checkPath(request: Request, kind: string, data: var Data, files: var UploadFiles): bool =
   # For get requests, checks that the path (which could be dynamic) is valid,
   # and gets the url parameters. For other requests, the request body is parsed.
   # The 'kind' parameter is an existing route.
-  let path = handleSubdomain(request)
   if request.reqMethod == HttpGet: # URL parameters
-    result = isValidGetPath(path, kind, data)
+    result = isValidGetPath(request.url.path, kind, data)
   else: # Form body
     let contentType = request.headers["Content-Type"].split(";") # TODO: Use me wisely to detemine how to parse request body
-    if path == kind:
+    if request.url.path == kind:
       result = true
       if request.body.len > 0:
         if "multipart/form-data" in contentType: # File upload
@@ -331,13 +324,44 @@ proc gzip(response: var Response, request: Request, headers: var HttpHeaders): v
         # Deprecated, since the modified version is used
         logger.log(lvlError, "Failed to gzip compress. Did you set 'Type Ulong* = uint'?")
 
+func parseHostAndDomain(request: Request): tuple[host, domain: string] =
+  result = (defaultHost, defaultDomain)
+  if request.headers.hasKey("host"):
+    let url = $request.headers["host"].split(':')[0] # leave the port out of this!
+    let parts = url.split('.')
+    result = case parts.len:
+      of 1:
+        (parts[0], defaultDomain) # localhost
+      of 2:
+        if parts[1] == "localhost":
+          (parts[1], parts[0]) # api.localhost
+        else:
+          (parts[0], defaultDomain) # site.com
+      of 3:
+        (parts[1], parts[0]) # api.site.com
+      else:
+        # TODO: NOT GOOD AT ALL
+        (defaultHost, defaultDomain)
+
+proc getHostAndDomain(request: Request): tuple[host, domain: string] =
+  if xanderRoutes.isDefaultHost():
+    var subdomain: string
+    if request.headers.hasKey("host") and hasSubdomain(request.headers["host"], subdomain):
+      (defaultHost, subdomain)
+    else:
+      (defaultHost, defaultDomain)
+  else:
+    parseHostAndDomain(request)
+
 # TODO: Check that request size <= server max allowed size
 # Called on each request to server
 proc onRequest(request: Request): Future[void] {.gcsafe.} =
   var (data, headers, cookies, session, files) = newRequestHandlerVariables()
-  if xanderRoutes.hasKey(request.reqMethod):
-    for route in xanderRoutes[request.reqMethod].keys:
-      if checkPath(request, route, data, files):
+  var (host, domain) = getHostAndDomain(request)
+  if xanderRoutes.existsMethod(request.reqMethod, host, domain):
+    # At this point, we're inside the domain!
+    for serverRoute in xanderRoutes[host][domain][request.reqMethod]:
+      if checkPath(request, serverRoute.route, data, files):
         # Get URL query parameters
         parseUrlQuery(request.url.query, data)
         # Parse cookies from header
@@ -350,7 +374,8 @@ proc onRequest(request: Request): Future[void] {.gcsafe.} =
         # Set default headers
         setDefaultHeaders(headers)
         # Request handler response
-        var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
+        #var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
+        var response = serverRoute.handler(request, data, headers, cookies, session, files)
         # TODO: Fix the way content type is determined
         setContentTypeToHTMLIfNeeded(response, headers)
         # gzip encode if needed
@@ -376,45 +401,59 @@ proc getServer*(): AsyncHttpServer =
   #readTemplates(templateDirectory, templates)
   return xanderServer
 
-proc addRoute*(httpMethod: HttpMethod, route: string, handler: RequestHandler): void =
-  if not xanderRoutes.hasKey(httpMethod):
-    xanderRoutes[httpMethod] = newRoute()
-  xanderRoutes[httpMethod][route] = handler
+proc addRoute*(host = defaultHost, domain = defaultDomain, httpMethod: HttpMethod, route: string, handler: RequestHandler): void =
+  xanderRoutes.addRoute(httpMethod, route, handler, host, domain)
 
-proc addGet*(route: string, handler: RequestHandler): void =
-  addRoute(HttpGet, route, handler)
+proc addGet*(host, domain, route: string, handler: RequestHandler): void =
+  addRoute(host, domain, HttpGet, route, handler)
 
-proc addPost*(route: string, handler: RequestHandler): void =
-  addRoute(HttpPost, route, handler)
+proc addPost*(host, domain, route: string, handler: RequestHandler): void =
+  addRoute(host, domain, HttpPost, route, handler)
 
-proc addPut*(route: string, handler: RequestHandler): void =
-  addRoute(HttpPut, route, handler)
+proc addPut*(host, domain, route: string, handler: RequestHandler): void =
+  addRoute(host, domain, HttpPut, route, handler)
 
-proc addDelete*(route: string, handler: RequestHandler): void =
-  addRoute(HttpDelete, route, handler)
+proc addDelete*(host, domain, route: string, handler: RequestHandler): void =
+  addRoute(host, domain, HttpDelete, route, handler)
 
 # TODO: Build source using Nim Nodes instead of strings
-proc buildRequestHandlerSource(reqMethod, route, body: string): string =
-  var source = &"add{reqMethod}({tools.quote(route)}, {requestHandlerString}{newLine}"
+proc buildRequestHandlerSource(host, domain, reqMethod, route, body: string): string =
+  var source = &"add{reqMethod}({tools.quote(host)}, {tools.quote(domain)}, {tools.quote(route)}, {requestHandlerString}{newLine}"
   for row in body.split(newLine):
     if row.len > 0:
       source &= &"{tab}{row}{newLine}"
   return source & ")"
 
 macro get*(route: string, body: untyped): void =
-  let requestHandlerSource = buildRequestHandlerSource("Get", unquote(route), repr(body))
+  let requestHandlerSource = buildRequestHandlerSource(defaultHost, defaultDomain, "Get", unquote(route), repr(body))
+  parseStmt(requestHandlerSource)
+
+macro x_get*(host, domain, route: string, body: untyped): void =
+  let requestHandlerSource = buildRequestHandlerSource(unquote(host), unquote(domain), "Get", unquote(route), repr(body))
   parseStmt(requestHandlerSource)
 
 macro post*(route: string, body: untyped): void =
   let requestHandlerSource = buildRequestHandlerSource("Post", unquote(route), repr(body))
   parseStmt(requestHandlerSource)
 
+macro x_post*(host, domain, route: string, body: untyped): void =
+  let requestHandlerSource = buildRequestHandlerSource(unquote(host), unquote(domain), "Post", unquote(route), repr(body))
+  parseStmt(requestHandlerSource)
+
 macro put*(route: string, body: untyped): void =
   let requestHandlerSource = buildRequestHandlerSource("Put", unquote(route), repr(body))
   parseStmt(requestHandlerSource)
 
+macro x_put*(host, domain, route: string, body: untyped): void =
+  let requestHandlerSource = buildRequestHandlerSource(unquote(host), unquote(domain), "Put", unquote(route), repr(body))
+  parseStmt(requestHandlerSource)
+
 macro delete*(route: string, body: untyped): void =
   let requestHandlerSource = buildRequestHandlerSource("Delete", unquote(route), repr(body))
+  parseStmt(requestHandlerSource)
+
+macro delete*(host, domain, route: string, body: untyped): void =
+  let requestHandlerSource = buildRequestHandlerSource(unquote(host), unquote(domain), "Delete", unquote(route), repr(body))
   parseStmt(requestHandlerSource)
 
 proc startsWithRequestMethod(s: string): bool =
@@ -423,29 +462,7 @@ proc startsWithRequestMethod(s: string): bool =
     if s.startsWith(m):
       return true
 
-proc reformatRouterCode(path, body: string): string =
-  for line in body.split(newLine):
-    var lineToAdd = line & newLine
-    if line.len > 0 and ':' in line:
-      if startsWithRequestMethod(line):
-        let requestHandlerDefinition = line.split(" ")
-        let requestMethod = requestHandlerDefinition[0]
-        var route = requestHandlerDefinition[1]
-        if route == "\"/\":":
-          route = "\"\""
-          route = route[0] & path & route[1..route.len - 1]
-          lineToAdd = requestMethod & " " & route & ":" & newLine
-        elif route.startsWith('"') and route.endsWith("\":") and route[1] == '/':
-          route = route[0] & path & route[1..route.len - 1]
-          lineToAdd = requestMethod & " " & route & newLine
-    result &= lineToAdd
-
-macro router*(route, body: untyped): void =
-  let path = repr(route).unquote
-  let body = reformatRouterCode(path, repr(body))
-  parseStmt(body)
-
-proc reformatSubdomainCode(name, body: string): string =
+proc reformatRouterCode(host, domain, path, body: string): string =
   for line in body.split(newLine):
     var lineToAdd = line & newLine
     if line.len > 0 and ':' in line:
@@ -454,24 +471,85 @@ proc reformatSubdomainCode(name, body: string): string =
         let requestHandlerDefinition = line.split(" ")
         let requestMethod = requestHandlerDefinition[0]
         var route = requestHandlerDefinition[1]
-        if route.startsWith('"') and route.endsWith("\":") and route[1] == '/':
-          route = route[0] & name & '.' & route[1..route.len - 1]
-          lineToAdd = requestMethod & " " & route & newLine
-      # router
+        if route == "\"/\":":
+          route = "\"\""
+          route = route[0] & path & route[1..route.len - 1]
+          lineToAdd = "x_" & requestMethod & " " & tools.quote(host) & ", " & tools.quote(domain) & ", " & route & ":" & newLine
+        elif route.startsWith('"') and route.endsWith("\":") and route[1] == '/':
+          route = route[0] & path & route[1..route.len - 1]
+          lineToAdd = "x_" & requestMethod & " " & tools.quote(host) & ", " & tools.quote(domain) & ", " & route & newLine
+    result &= lineToAdd
+
+macro router*(route, body: untyped): void =
+  let path = repr(route).unquote
+  let body = reformatRouterCode(defaultHost, defaultDomain, path, repr(body))
+  parseStmt(body)
+
+macro x_router*(host, domain, route, body: untyped): void =
+  let body = reformatRouterCode(host.unquote, domain.unquote, route.unquote, repr(body))
+  parseStmt(body)
+
+proc reformatSubdomainCode(domain, host, body: string): string =
+  # transforms request macros and routers to x_gets and x_routers
+  for line in body.split(newLine):
+    var lineToAdd = line & newLine
+    if line.len > 0 and ':' in line:
+      # request handler not within a host-block
+      if startsWithRequestMethod(line):
+        let requestHandlerDefinition = line.split(" ")
+        let requestMethod = requestHandlerDefinition[0]
+        let route = requestHandlerDefinition[1]
+        lineToAdd = "x_" & requestMethod & " " & tools.quote(host) & ", " & tools.quote(domain) & ", " & route & newLine
+      # router not within a host-block
       elif line.startsWith("router"):
         let routerDefinition = line.split(" ")
-        var route = routerDefinition[1].replace(":", "")
-        if route.startsWith('"') and route.endsWith('"') and route[1] == '/':
-          route = route[0] & name & '.' & route[1..route.len - 1]
-          lineToAdd = "router " & route & ":" & newLine
-    # Append line to result
+        var route = routerDefinition[1]
+        lineToAdd = "x_router " & tools.quote(host) & ", " & tools.quote(domain) & ", " & route & newLine
     result &= lineToAdd
 
 macro subdomain*(name, body: untyped): void =
   let name = repr(name).unquote.toLower
-  let body =  reformatSubdomainCode(name, repr(body))
+  let body = reformatSubdomainCode(name, defaultHost, repr(body))
   parseStmt(body)
 
+proc reformatHostCode(host, body: string): string =
+  var domain = defaultDomain
+  var router = ""
+  for line in body.split(newLine):
+    var lineToAdd = line & newLine
+    if line.len > 0 and ':' in line:
+      # Subdomain
+      if strip(line).startsWith("subdomain"):
+        router = ""
+        domain = unquote(line.split(" ")[1].replace(":", ""))
+      # Router
+      elif strip(line).startsWith("router"):
+        if indentation(line) == 0: domain = defaultDomain
+        router = strip(line).split(" ")[1].replace(":", "").unquote
+      # Request Handler
+      elif strip(line).startsWithRequestMethod:
+        let indent = indentation(line) # level of indentation
+        case indent:
+          of 0: # just inside host
+            domain = defaultDomain
+            router = ""
+          else: # other options
+            discard
+        var line = line[indent .. line.len - 1]
+        let handlerDef = line.split(" ")
+        var route = handlerDef[1].unquote.strip(chars = {':'})
+        route = if route.len == 1 and router != "": router else: router & route[0 .. route.len - 1]
+        lineToAdd = repeat(" ", indent) & "x_" & handlerDef[0] & " " & tools.quote(host) & ", " & tools.quote(domain) & ", " & tools.quote(route) & ":" & newLine
+    # Append line to result
+    result &= lineToAdd
+
+macro host*(host, body: untyped): void =
+  let host = repr(host).unquote.toLower
+  let body = reformatHostCode(host, repr(body))
+  parseStmt(body)
+
+proc printServerStructure*(): void =
+  logger.log(lvlInfo, xanderRoutes)
   
 # TODO: Dynamically created directories are not supported
 proc serveFiles*(route: string): void =
@@ -481,7 +559,7 @@ proc serveFiles*(route: string): void =
   logger.log(lvlInfo, "Serving files from ", applicationDirectory & route)
   let path = if route.endsWith("/"): route[0..route.len-2] else: route # /public/ => /public
   let newRoute = path & "/:fileName" # /public/:fileName
-  addGet(newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response {.gcsafe.} = 
+  addGet(defaultHost, defaultDomain, newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response {.gcsafe.} = 
     let filePath = "." & path / decodeUrl(data.get("fileName")) # ./public/.../fileName
     let ext = splitFile(filePath).ext
     if existsFile(filePath):

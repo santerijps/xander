@@ -14,3 +14,10 @@ func toIntSeq*(s: string, sep = ','): seq[int] =
   result = newSeq[int]()
   for value in s.multiReplace(("[", ""), ("]", "")).split(sep):
     result.add(parseInt(value))
+
+func indentation*(s: string): int =
+  for c in s:
+    if c == ' ':
+      result += 1
+    else:
+      break

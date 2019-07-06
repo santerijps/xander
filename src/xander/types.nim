@@ -166,17 +166,88 @@ type
     #proc(request: Request, X: var RequestHandlerVariables): Response {.gcsafe.}
 
 type
-  Route* = Table[string, RequestHandler]
-  RoutingTable* = Table[HttpMethod, Route]
+  ServerRoute* = tuple
+    route: string
+    handler: RequestHandler
 
-func newRoute*(): Route =
-  initTable[string, RequestHandler]()
+func newServerRoute*(route: string, handler: RequestHandler): ServerRoute =
+  (route, handler)
 
-func newRoutingTable*(): RoutingTable =
-  initTable[HttpMethod, Route]()
+type
+  Domain* = 
+    # HttpMethod => List of Server Routes
+    Table[HttpMethod, seq[ServerRoute]]
+  Domains* =
+    Table[string, Domain]
 
-func `$`*(routingTable: RoutingTable): string =
-  for httpMethod, route in routingTable.pairs:
-    result &= $httpMethod
-    for r, m in route.pairs:
-      result &= newLine & tab & r
+func newDomain*(): Domain =
+  initTable[HttpMethod, seq[ServerRoute]]()
+
+func newDomains*(): Domains =
+  initTable[string, Domain]()
+
+type
+  Hosts* =
+    # Host => Domains
+    Table[string, Domains]
+
+const defaultHost* = "DEFAULT_HOST"
+const defaultDomain* = "DEFAULT_DOMAIN"
+const defaultMethod* = HttpGet
+
+func `$`*(server: Hosts): string =
+  result = newLine & newLine & "~~~ SERVER STRUCTURE ~~~" & newLine
+  for host in server.keys:
+    result &= " HOST " & host & newLine
+    for domain in server[host].keys:
+      result &= "  DOMAIN " & domain & newLine
+      for httpMethod in server[host][domain].keys:
+        result &= "   METHOD " & $httpMethod & newLine
+        for route in server[host][domain][httpMethod]:
+          result &= "    ROUTE " & route.route & newLine
+  result &= "~~~ SERVER STRUCTURE ~~~" & newLine & newLine
+
+func newHosts*(): Hosts =
+  initTable[string, Domains]()
+
+func existsHost*(server: Hosts, host: string): bool =
+  server.hasKey(host)
+
+func existsDomain*(server: Hosts, domain: string, host: string): bool =
+  server.existsHost(host) and server[host].hasKey(domain)
+
+func existsMethod*(server: Hosts, httpMethod: HttpMethod, host = defaultHost, domain = defaultDomain): bool =
+  server.existsHost(host) and server.existsDomain(domain, host) and server[host][domain].hasKey(httpMethod)
+
+func addHost*(server: var Hosts, host = defaultHost): void =
+  if not server.hasKey(host):
+    server[host] = newDomains()
+
+func addDomain*(server: var Hosts, domain = defaultDomain, host = defaultHost): void =
+  server[host][domain] = newDomain()
+
+func addMethod*(server: var Hosts, httpMethod = defaultMethod, host = defaultHost, domain = defaultDomain): void =
+  if server.hasKey(host) and server[host].hasKey(domain):
+    server[host][domain][httpMethod] = newSeq[ServerRoute]()
+
+func getRoutes*(server: Hosts, host = defaultHost, domain = defaultDomain, httpMethod = defaultMethod): seq[ServerRoute] =
+  server[host][domain][httpMethod]
+
+func addRoute*(server: var Hosts, httpMethod: HttpMethod, route: string, handler: RequestHandler, host = defaultHost, domain = defaultDomain): void =
+  if not server.existsHost(host):
+    server.addHost(host)
+  if not server.existsDomain(domain, host):
+    server.addDomain(domain, host)
+  if not server.existsMethod(httpMethod, host, domain):
+    server.addMethod(httpMethod, host, domain)
+  var routes = server.getRoutes(host, domain, httpMethod)
+  routes.add newServerRoute(route, handler)
+  server[host][domain][httpMethod] = routes
+
+func addRoute*(server: var Hosts, route: string, handler: RequestHandler, host = defaultHost, domain = defaultDomain, httpMethod: HttpMethod = defaultMethod): void =
+  var routes = server.getRoutes(host, domain, httpMethod)
+  routes.add newServerRoute(route, handler)
+  server[host][domain][httpMethod] = routes
+
+func isDefaultHost*(server: Hosts): bool =
+  server.existsHost(defaultHost)
