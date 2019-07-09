@@ -292,8 +292,8 @@ func addRoute*(server: var Hosts, route: string, handler: RequestHandler, host =
   routes.add newServerRoute(route, handler)
   server[host][domain][httpMethod] = routes
 
-func isDefaultHost*(server: Hosts): bool =
-  server.existsHost(defaultHost)
+proc isDefaultHost*(server: Hosts): bool =
+  server.existsHost(defaultHost) #and server.len == 1
 
 type
   ErrorHandler* = 

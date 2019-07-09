@@ -333,7 +333,7 @@ proc gzip(response: var types.Response, request: Request, headers: var HttpHeade
         # Deprecated, since the modified version is used
         logger.log(lvlError, "Failed to gzip compress. Did you set 'Type Ulong* = uint'?")
 
-func parseHostAndDomain(request: Request): tuple[host, domain: string] =
+proc parseHostAndDomain(request: Request): tuple[host, domain: string] =
   result = (defaultHost, defaultDomain)
   if request.headers.hasKey("host"):
     let url = $request.headers["host"].split(':')[0] # leave the port out of this!
@@ -569,13 +569,14 @@ proc serveFiles*(route: string): void =
   logger.log(lvlInfo, "Serving files from ", applicationDirectory & route)
   let path = if route.endsWith("/"): route[0..route.len-2] else: route # /public/ => /public
   let newRoute = path & "/:fileName" # /public/:fileName
-  addGet(defaultHost, defaultDomain, newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): types.Response {.gcsafe.} = 
-    let filePath = "." & path / decodeUrl(data.get("fileName")) # ./public/.../fileName
-    let ext = splitFile(filePath).ext
-    if existsFile(filePath):
-      headers["Content-Type"] = getContentType(ext)
-      respond readFile(filePath)
-    else: respond Http404)
+  for host in xanderRoutes.keys: # add file serving for every host
+    addGet(host, defaultDomain, newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): types.Response {.gcsafe.} = 
+      let filePath = "." & path / decodeUrl(data.get("fileName")) # ./public/.../fileName
+      let ext = splitFile(filePath).ext
+      if existsFile(filePath):
+        headers["Content-Type"] = getContentType(ext)
+        respond readFile(filePath)
+      else: respond Http404)
   for directory in walkDirs("." & path & "/*"):
     serveFiles(directory[1..directory.len - 1])
 
