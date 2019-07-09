@@ -54,6 +54,8 @@ var # Global variables
   xanderRoutes {.threadvar.} : Hosts
   # Logger
   logger {.threadvar.} : Logger
+  # Http error code handler
+  errorHandler* {.threadvar.} : ErrorHandler
 
 let appDir = getAppDir()
 applicationDirectory = if appDir.extractFilename == "bin": appDir.parentDir() else: appDir
@@ -64,6 +66,13 @@ fileServers = newSeq[string]()
 xanderServer = newAsyncHttpServer(maxBody = 2147483647) # 32 bits MAXED
 xanderRoutes = newHosts()
 logger = newConsoleLogger(fmtStr="[$time] - XANDER($levelname) ")
+errorHandler = proc(request: Request, httpCode: HttpCode): types.Response {.gcsafe.} =
+  ("""
+    <!DOCTYPE html>
+    <h2>$1 Error</h2>
+    <hr>
+    <a href="/">Go back to index</a>
+  """.format(httpCode), httpCode, newHttpHeaders())
 
 proc setTemplateDirectory*(path: string): void =
   var path = path
@@ -105,20 +114,20 @@ proc html*(content: string): string =
   # Let's the browser know that the response should be treated as HTML
   "<!DOCTYPE html><meta charset=\"utf-8\">\n" & content
 
-proc respond*(httpCode = Http200, content = "", headers = newHttpHeaders()): Response =
+proc respond*(httpCode = Http200, content = "", headers = newHttpHeaders()): types.Response =
   return (content, httpCode, headers)
 
-proc respond*(content: string, httpCode = Http200, headers = newHttpHeaders()): Response =
+proc respond*(content: string, httpCode = Http200, headers = newHttpHeaders()): types.Response =
   return (content, httpCode, headers)
 
-proc respond*(data: Data, httpCode = Http200, headers = newHttpHeaders()): Response =
+proc respond*(data: Data, httpCode = Http200, headers = newHttpHeaders()): types.Response =
   return ($data, httpCode, headers)
 
-proc respond*(file: UploadFile, httpCode = Http200, headers = newHttpHeaders()): Response =
+proc respond*(file: UploadFile, httpCode = Http200, headers = newHttpHeaders()): types.Response =
   headers["Content-Type"] = getContentType(file.ext)
   return (file.content, httpCode, headers)
 
-proc redirect*(path: string, content = "", delay = 0, httpCode = Http303): Response =
+proc redirect*(path: string, content = "", delay = 0, httpCode = Http303): types.Response =
   var headers: HttpHeaders
   if delay == 0:
     headers = newHttpHeaders([("Location", path)])
@@ -266,7 +275,7 @@ proc checkPath(request: Request, kind: string, data: var Data, files: var Upload
         else: # Other
           data = parseRequestBody(request.body)
 
-proc setResponseCookies*(response: var Response, cookies: Cookies): void =
+proc setResponseCookies*(response: var types.Response, cookies: Cookies): void =
   for key, cookie in cookies.server:
     response.headers.add("Set-Cookie", 
       cookies_module.setCookie(
@@ -277,7 +286,7 @@ proc setResponseCookies*(response: var Response, cookies: Cookies): void =
 proc generateSessionId(): string =
   $secureHash($(cpuTime() + rand(10000).float))
 
-proc setResponseHeaders(response: var Response, headers: HttpHeaders): void =
+proc setResponseHeaders(response: var types.Response, headers: HttpHeaders): void =
   for key, val in headers.pairs:
     response.headers.add(key, val)
 
@@ -295,7 +304,7 @@ proc getSession(cookies: var Cookies, session: var Session): string =
   return ssid
 
 # The default content-type header is text/plain.
-proc setContentTypeToHTMLIfNeeded(response: Response, headers: var HttpHeaders): void =
+proc setContentTypeToHTMLIfNeeded(response: types.Response, headers: var HttpHeaders): void =
   if "<!DOCTYPE html>" in response.body:
     headers["Content-Type"] = "text/html; charset=UTF-8"
 
@@ -313,7 +322,7 @@ proc setDefaultHeaders(headers: var HttpHeaders): void =
   headers["X-XSS-Protection"] = "1; mode=block"
 
 # TODO: Some say .pngs should not be compressed
-proc gzip(response: var Response, request: Request, headers: var HttpHeaders): void =
+proc gzip(response: var types.Response, request: Request, headers: var HttpHeaders): void =
   if request.headers.hasKey("accept-encoding"):
     if "gzip" in request.headers["accept-encoding"]:
       try:
@@ -374,7 +383,6 @@ proc onRequest(request: Request): Future[void] {.gcsafe.} =
         # Set default headers
         setDefaultHeaders(headers)
         # Request handler response
-        #var response = xanderRoutes[request.reqMethod][route](request, data, headers, cookies, session, files)
         var response = serverRoute.handler(request, data, headers, cookies, session, files)
         # TODO: Fix the way content type is determined
         setContentTypeToHTMLIfNeeded(response, headers)
@@ -387,7 +395,9 @@ proc onRequest(request: Request): Future[void] {.gcsafe.} =
         # Put headers into response
         setResponseHeaders(response, headers)
         return request.respond(response.httpCode, response.body, response.headers)
-  serveError(request, Http404)
+  #serveError(request, Http404)
+  let response = errorHandler(request, Http404)
+  return request.respond(response.httpCode, response.body, response.headers)
 
 # TODO: Check port range
 proc runForever*(port: uint = 3000, message: string = "Xander server is up and running!"): void =
@@ -433,7 +443,7 @@ macro x_get*(host, domain, route: string, body: untyped): void =
   parseStmt(requestHandlerSource)
 
 macro post*(route: string, body: untyped): void =
-  let requestHandlerSource = buildRequestHandlerSource("Post", unquote(route), repr(body))
+  let requestHandlerSource = buildRequestHandlerSource(defaultHost, defaultDomain, "Post", unquote(route), repr(body))
   parseStmt(requestHandlerSource)
 
 macro x_post*(host, domain, route: string, body: untyped): void =
@@ -441,7 +451,7 @@ macro x_post*(host, domain, route: string, body: untyped): void =
   parseStmt(requestHandlerSource)
 
 macro put*(route: string, body: untyped): void =
-  let requestHandlerSource = buildRequestHandlerSource("Put", unquote(route), repr(body))
+  let requestHandlerSource = buildRequestHandlerSource(defaultHost, defaultDomain, "Put", unquote(route), repr(body))
   parseStmt(requestHandlerSource)
 
 macro x_put*(host, domain, route: string, body: untyped): void =
@@ -449,7 +459,7 @@ macro x_put*(host, domain, route: string, body: untyped): void =
   parseStmt(requestHandlerSource)
 
 macro delete*(route: string, body: untyped): void =
-  let requestHandlerSource = buildRequestHandlerSource("Delete", unquote(route), repr(body))
+  let requestHandlerSource = buildRequestHandlerSource(defaultHost, defaultDomain, "Delete", unquote(route), repr(body))
   parseStmt(requestHandlerSource)
 
 macro delete*(host, domain, route: string, body: untyped): void =
@@ -559,7 +569,7 @@ proc serveFiles*(route: string): void =
   logger.log(lvlInfo, "Serving files from ", applicationDirectory & route)
   let path = if route.endsWith("/"): route[0..route.len-2] else: route # /public/ => /public
   let newRoute = path & "/:fileName" # /public/:fileName
-  addGet(defaultHost, defaultDomain, newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response {.gcsafe.} = 
+  addGet(defaultHost, defaultDomain, newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): types.Response {.gcsafe.} = 
     let filePath = "." & path / decodeUrl(data.get("fileName")) # ./public/.../fileName
     let ext = splitFile(filePath).ext
     if existsFile(filePath):
@@ -568,6 +578,11 @@ proc serveFiles*(route: string): void =
     else: respond Http404)
   for directory in walkDirs("." & path & "/*"):
     serveFiles(directory[1..directory.len - 1])
+
+template onError*(body: untyped): void =
+  errorHandler = proc(request: Request, httpCode: HttpCode): 
+    types.Response = 
+      body
 
 when isMainModule:
   echo "Nothing to see here"

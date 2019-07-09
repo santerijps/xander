@@ -16,7 +16,6 @@ get "/":
   # is a tuple[body: string, httpCode: HttpCode, headers: HttpHeaders].
   # Returning the 'respond' proc call returns this tuple
   #
-  assert respond("Hello World!") == ("Hello World!", Http200, nil)
-  assert respond(Http404) == ("", Http404, nil)
+  respond "Hello World!"
 
 runForever(3000)

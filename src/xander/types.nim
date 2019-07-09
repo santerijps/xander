@@ -3,10 +3,14 @@ import
   asynchttpserver,
   json,
   regex,
-  tables
+  sequtils,
+  strutils,
+  tables,
+  macros
 
 import
-  constants
+  constants,
+  tools
 
 type
   Cookie* = tuple
@@ -77,6 +81,42 @@ func get*(data: Data, key: string): string =
   if d != nil:
     return d.getStr()
 
+macro withData*(keys: varargs[string], body: untyped): void =
+  var vars = repr(keys).strip(chars = {'[', ']'}).replace("\"", "").split(", ")
+  var source: string = "if"
+  # create if statement
+  for i in 0 .. vars.len - 1:
+    source &= " data.hasKey($1)".format(tools.quote(vars[i]))
+    if i == vars.len - 1: source &= ":\n"
+    else: source &= " and"
+  # add var declaration(s)
+  for v in vars:
+    source &= tab & "var $1 = data.get($2)\n".format(v.replace('-', '_'), tools.quote(v))
+  # add body
+  for line in repr(body).splitLines:
+    if line.len > 0:
+      source &= tab & line & newLine
+  # parse statement
+  parseStmt(source)
+
+macro withHeaders*(keys: varargs[string], body: untyped): void =
+  var vars = repr(keys).strip(chars = {'[', ']'}).replace("\"", "").split(", ")
+  var source: string = "if"
+  # create if statement
+  for i in 0 .. vars.len - 1:
+    source &= " request.headers.hasKey($1)".format(tools.quote(vars[i]))
+    if i == vars.len - 1: source &= ":\n"
+    else: source &= " and"
+  # add var declaration(s)
+  for v in vars:
+    source &= tab & "var $1 = request.headers[$2]\n".format(v.replace('-', '_'), tools.quote(v))
+  # add body
+  for line in repr(body).splitLines:
+    if line.len > 0:
+      source &= tab & line & newLine
+  # parse statement
+  parseStmt(source)
+
 func getBool*(data: Data, key: string): bool =
   let d = data.getOrDefault(key)
   if d != nil:
@@ -94,7 +134,7 @@ func add*[T](node: Data, key: string, value: T): Data =
   result = node
   add(node, key, %value)
 
-func contains*(data: Data, keys: varargs[string]): bool =
+func hasKeys*(data: Data, keys: varargs[string]): bool =
   result = true
   for key in keys:
     if not data.hasKey(key):
@@ -164,6 +204,9 @@ type
     proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): Response {.gcsafe.}
     # TODO: Would below work?
     #proc(request: Request, X: var RequestHandlerVariables): Response {.gcsafe.}
+
+template newRequestHandler*(body: untyped): RequestHandler =
+  body
 
 type
   ServerRoute* = tuple
@@ -251,3 +294,7 @@ func addRoute*(server: var Hosts, route: string, handler: RequestHandler, host =
 
 func isDefaultHost*(server: Hosts): bool =
   server.existsHost(defaultHost)
+
+type
+  ErrorHandler* = 
+    proc(request: Request, httpCode: HttpCode): Response {.gcsafe.}
