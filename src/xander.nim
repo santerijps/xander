@@ -4,6 +4,7 @@ import
   asynchttpserver as http,
   cookies as cookies_module,
   base64,
+  httpclient,
   json,
   logging,
   macros,
@@ -383,7 +384,14 @@ proc onRequest(request: Request): Future[void] {.gcsafe.} =
         # Set default headers
         setDefaultHeaders(headers)
         # Request handler response
-        var response = serverRoute.handler(request, data, headers, cookies, session, files)
+        var response: types.Response
+        try:
+          response = serverRoute.handler(request, data, headers, cookies, session, files)
+        except:
+          logger.log(lvlError, "Request Handler broke with request path '$1'.".format(request.url.path))
+          response.httpCode = Http500
+          response.body = "Internal server error"
+          response.headers = newHttpHeaders()
         # TODO: Fix the way content type is determined
         setContentTypeToHTMLIfNeeded(response, headers)
         # gzip encode if needed
@@ -395,9 +403,7 @@ proc onRequest(request: Request): Future[void] {.gcsafe.} =
         # Put headers into response
         setResponseHeaders(response, headers)
         return request.respond(response.httpCode, response.body, response.headers)
-  #serveError(request, Http404)
-  let response = errorHandler(request, Http404)
-  return request.respond(response.httpCode, response.body, response.headers)
+  serveError(request, Http404)
 
 # TODO: Check port range
 proc runForever*(port: uint = 3000, message: string = "Xander server is up and running!"): void =
@@ -584,6 +590,10 @@ template onError*(body: untyped): void =
   errorHandler = proc(request: Request, httpCode: HttpCode): 
     types.Response = 
       body
+
+proc fetch*(url: string): string =
+  var client = newAsyncHttpClient()
+  waitFor client.getContent(url)
 
 when isMainModule:
   echo "Nothing to see here"
