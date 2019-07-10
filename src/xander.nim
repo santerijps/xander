@@ -578,7 +578,7 @@ proc serveFiles*(route: string): void =
   let newRoute = path & "/:fileName" # /public/:fileName
   for host in xanderRoutes.keys: # add file serving for every host
     addGet(host, defaultDomain, newRoute, proc(request: Request, data: var Data, headers: var HttpHeaders, cookies: var Cookies, session: var Session, files: var UploadFiles): types.Response {.gcsafe.} = 
-      let filePath = "." & path / decodeUrl(data.get("fileName")) # ./public/.../fileName
+      let filePath = applicationDirectory & path / decodeUrl(data.get("fileName")) # ./public/.../fileName
       let ext = splitFile(filePath).ext
       if existsFile(filePath):
         headers["Content-Type"] = getContentType(ext)
