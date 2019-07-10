@@ -313,7 +313,7 @@ proc setDefaultHeaders(headers: var HttpHeaders): void =
   headers["Cache-Control"] = "public; max-age=" & $(60*60*24*7) # One week
   headers["Connection"] = "keep-alive"
   headers["Content-Type"] = "text/plain; charset=UTF-8"
-  headers["Content-Security-Policy"] = "script-src 'self'"
+  headers["Content-Security-Policy"] = "font-src 'self'"
   headers["Feature-Policy"] = "autoplay 'none'"
   headers["Referrer-Policy"] = "no-referrer"
   headers["Server"] = "xander"
