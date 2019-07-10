@@ -597,4 +597,5 @@ proc fetch*(url: string): string =
   waitFor client.getContent(url)
 
 when isMainModule:
-  echo "Nothing to see here"
+  
+  include xander/cli
