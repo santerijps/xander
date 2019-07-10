@@ -572,6 +572,7 @@ proc serveFiles*(route: string): void =
   # Given a route, e.g. '/public', this proc
   # adds a get method for provided directory and
   # its child directories. This proc is RECURSIVE.
+  var route = route.replace(applicationDirectory, "")
   logger.log(lvlInfo, "Serving files from ", applicationDirectory & route)
   let path = if route.endsWith("/"): route[0..route.len-2] else: route # /public/ => /public
   let newRoute = path & "/:fileName" # /public/:fileName
@@ -583,8 +584,8 @@ proc serveFiles*(route: string): void =
         headers["Content-Type"] = getContentType(ext)
         respond readFile(filePath)
       else: respond Http404)
-  for directory in walkDirs("." & path & "/*"):
-    serveFiles(directory[1..directory.len - 1])
+  for directory in walkDirs(applicationDirectory & path & "/*"):
+    serveFiles(directory)
 
 template onError*(body: untyped): void =
   errorHandler = proc(request: Request, httpCode: HttpCode): 
