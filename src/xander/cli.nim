@@ -1,6 +1,7 @@
 import
   os,
   osproc,
+  sequtils,
   strutils
 
 proc newProject(appDir = "my-xander-app"): void = 
@@ -104,18 +105,40 @@ body {
 }""")
   echo "Done!"
 
-proc nimCompile(fileName: string): int =
-  execCmd("nim c --threads:on --verbosity:1 --hints:off $1".format(fileName))
+type
+  CmdResponse = tuple
+    output: TaintedString
+    exitCode: int
+
+proc cmd(s: string): CmdResponse =
+  execCmdEx(s)
+
+proc nimCompile(fileName: string): CmdResponse =
+  cmd("nim c --threads:on --verbosity:1 --hints:off $1".format(fileName))
 
 proc runProject(fileName = "app.nim"): void =
   if existsFile(fileName):
-    echo nimCompile(fileName)
-    echo execCmd("." / fileName.splitFile.name)
+    discard nimCompile(fileName)
+    discard execCmd("." / fileName.splitFile.name)
   else:
     echo "File not found: ", fileName
 
+proc getProcessId(port: string, pid: var string): bool =
+  var output = execProcess("lsof -i | grep *:$1".format(port)).strip()
+  var parts = output.split(" ").filter(proc(x: string): bool = x.len > 0)
+  if parts.len > 1:
+    pid = parts[1]
+    return true
+
+proc killProcess(pid: string): void =
+  discard execProcess("kill $1".format(pid))
+
 proc updateXander(): void =
   echo execCmd("nimble install https://github.com/sunjohanday/xander")
+
+setControlCHook(proc() {.noconv.} =
+  quit(0)
+)
 
 let params = commandLineParams()
 
@@ -137,6 +160,73 @@ else:
       else:
         runProject()
     
+    of "listen":
+
+      var fileName {.threadvar.} : string 
+      var execName {.threadvar.} : string 
+  
+      if params.len > 1:
+        fileName = params[1]
+        execName = fileName.splitFile.name
+
+      else:
+        fileName = "app.nim"
+        execName = "app"
+
+      var app: Thread[string]
+      var appProc = proc(execName: string) {.thread, nimcall.} = 
+        let output = execProcess("./$1 &".format(execName))
+        if output.len > 0:
+          echo "\n~~~OUTPUT~~~\n$1\n~~~/OUTPUT~~~\n".format(output)
+
+      var (output, exitCode) = nimCompile(fileName)
+
+      if exitCode == 1:
+        echo output
+      else:
+        createThread(app, appProc, execName)
+
+      proc getPort(): string =
+        for line in fileName.lines:
+          if "runForever" in line:
+            result = line.replace("(", "").replace(")", "").replace(" ", "").replace("runForever", "")
+            # Linux: lsof command recognizes port 8080 as http-alt
+            result = if result == "8080": "http-alt" else: result 
+
+      var pid: string                   # Process ID
+      var previous = readFile(fileName) # File content previously
+      var next: TaintedString           # File content now
+      var port = getPort()              # Application port
+
+      echo "Listening $1 on port $2".format(fileName, port)
+
+      # Infinite loop?
+      while true:
+
+        # Get file content
+        next = readFile(fileName)
+
+        # File content has changed
+        if next != previous:
+          echo "Code changed!"
+          previous = next
+
+          # If process is found, kill it and re-compile
+          if getProcessId(port, pid):
+            killProcess(pid)
+            (output, exitCode) = nimCompile(fileName)
+            if exitCode == 1:
+              echo output
+            else:
+              port = getPort()
+              createThread(app, appProc, execName) 
+
+          else:
+            port = getPort()
+            createThread(app, appProc, execName) 
+
+        sleep(200)
+
     of "update":
       updateXander()
     

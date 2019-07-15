@@ -596,6 +596,11 @@ proc fetch*(url: string): string =
   var client = newAsyncHttpClient()
   waitFor client.getContent(url)
 
+setControlCHook(proc() {.noconv.} =
+  close(xanderServer)
+  quit(0)
+)
+
 when isMainModule:
   
   include xander/cli
