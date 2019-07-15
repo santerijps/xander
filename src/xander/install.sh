@@ -1,8 +1,12 @@
 #!/bin/bash
 [ -d "~/.xander" ] && mkdir "~/.xander"
-printf "Compiling Xander..."
+# Get latest version of Xander
+x=($(ls ~/.nimble/pkgs | grep xander-))
+y=~/.nimble/pkgs/${x[-1]}/xander.nim
 # Compiling with cpp for better compatiblity
-~/.nimble/bin/nim cpp --verbosity:1 --hints:off --threads:on -o:~/.xander/xander ~/.nimble/pkgs/xander-0.5.0/xander.nim
+echo "Found Xander in $y"
+echo "Compiling ${x[-1]}"
+~/.nimble/bin/nim cpp --verbosity:1 --hints:off --threads:on -o:~/.xander/xander $y
 echo "Finished. The Xander executable can be found in ~/.xander"
 echo "Add the following line to ~/.bashrc or ~/.profile:"
 echo ""
