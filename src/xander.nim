@@ -205,7 +205,20 @@ proc parseForm(body: string): JsonNode =
   let kvPairs = urlDecoded.split("&")
   for kvPair in kvPairs:
     let kvArray = kvPair.split("=")
-    result.set(kvArray[0], kvArray[1])
+    var key = kvArray[0]
+    let value = kvArray[1]
+    if "[]" in key:
+      key = key[0 .. key.len - 3]
+      if result.hasKey(key):
+        var arr = result[key].getElems()
+        arr.add(newJString(value))
+        result.set(key, arr)
+      else:
+        let arr = newJArray()
+        arr.add(newJString(value))
+        result.set(key, arr)
+    else:
+      result.set(key, value)
 
 proc getJsonData(keys: OrderedTable[string, JsonNode], node: JsonNode): JsonNode = 
   result = newJObject()
