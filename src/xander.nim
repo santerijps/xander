@@ -103,10 +103,10 @@ proc fillTemplateWithData*(templateString: string, data: Data): string =
 proc tmplt*(templateName: string, data: Data = newData()): string =
   if templates.hasKey(templateName):
     if templates.hasKey("layout"):
-      let layout = templates["layout"]
-      result = layout.replace(contentTag, templates[templateName])
+      let layout = readFile(templates["layout"])
+      result = layout.replace(contentTag, readFile(templates[templateName]))
     else:
-      result = templates[templateName]
+      result = readFile(templates[templateName])
     result = fillTemplateWithData(result, data)
   else:
     logger.log(lvlError, &"Template '{templateName}' does not exist!")

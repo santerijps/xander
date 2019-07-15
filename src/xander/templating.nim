@@ -8,7 +8,8 @@ proc readTemplates*(rootDir: string, templates: var Dictionary): void =
   var file: File
   for filepath in walkFiles(rootDir / "*"):
     if open(file, filepath, fmRead):
-      templates.set(filepath.splitFile.name, readAll(file))
+      #templates.set(filepath.splitFile.name, readAll(file))
+      templates.set(filepath.splitFile.name, filepath)
       close(file)
     else:
       echo "ERROR: Could not read template ", filepath

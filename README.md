@@ -1,8 +1,11 @@
 # xander (work in progress)
 An easy to use web application development library and framework.
 
-## Installation with nimble
-```$ nimble install https://github.com/sunjohanday/xander.git```
+## Installation
+```nimble install https://github.com/sunjohanday/xander.git```
+
+[OPTIONAL] If you want to install Xander CLI
+```~/.nimble/pkgs/xander-[VERSION]/xander/install.sh```
 
 A basic example:
 ```nim
