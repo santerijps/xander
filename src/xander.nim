@@ -23,7 +23,6 @@ import
 import # Local imports
   xander/constants,
   xander/contenttype,
-  xander/templating,
   xander/tools,
   xander/types,
   xander/zip/zlib_modified
@@ -35,7 +34,6 @@ export # TODO: What really needs to be exported???
   http,
   json,
   os,
-  strformat,
   tables,
   types,
   tools
@@ -48,68 +46,138 @@ var # Global variables
   templateDirectory {.threadvar.} : string
   # Storage
   sessions {.threadvar.} : Sessions
-  templates {.threadvar.} : Dictionary
-  fileServers {.threadvar.} : seq[string]
   # Fundamental server variables
   xanderServer {.threadvar.} : AsyncHttpServer
   xanderRoutes {.threadvar.} : Hosts
   # Logger
   logger {.threadvar.} : Logger
-  # Http error code handler
-  errorHandler* {.threadvar.} : ErrorHandler
 
 let appDir = getAppDir()
 applicationDirectory = if appDir.extractFilename == "bin": appDir.parentDir() else: appDir
-templateDirectory = applicationDirectory / "templates"
+templateDirectory = "templates"
 sessions = newSessions()
-templates = newDictionary()
-fileServers = newSeq[string]()
 xanderServer = newAsyncHttpServer(maxBody = 2147483647) # 32 bits MAXED
 xanderRoutes = newHosts()
 logger = newConsoleLogger(fmtStr="[$time] - XANDER($levelname) ")
-errorHandler = proc(request: Request, httpCode: HttpCode): types.Response {.gcsafe.} =
-  ("""
-    <!DOCTYPE html>
-    <h2>$1 Error</h2>
-    <hr>
-    <a href="/">Go back to index</a>
-  """.format(httpCode), httpCode, newHttpHeaders())
 
 proc setTemplateDirectory*(path: string): void =
   var path = path
-  if not path.startsWith("/"):
-    path = "/" & path
-  if not path.endsWith("/"):
-    path &= "/"
-  templateDirectory = applicationDirectory & path
+  if path.startsWith("/"):
+    path = path.substr(1)
+  templateDirectory = path
 
-proc fillTemplateWithData*(templateString: string, data: Data): string =
-  # Puts the variables defined in 'vars' into specified template.
-  # If a template inclusion is found in the template, its
-  # variables will also be put.
-  result = templateString
-  #result = handleFor(page, data)
-  # Insert template variables
-  for pair in data.pairs:
-    result = result.replace("{[" & pair.key & "]}", data[pair.key].getStr())
-  # Clear unused template variables
-  for m in findAndCaptureAll(result, re"\{\[\w+\]\}"):
-    result = result.replace(m, "")
-  # Find embedded templates and insert their template variables
-  for m in findAndCaptureAll(result, re"\{\[template\s\w*\-?\w*\]\}"):
-    var templ = m.substr(2, m.len - 3).split(" ")[1]
-    result = result.replace(m, templates[templ].fillTemplateWithData(data))
+#[
 
-proc tmplt*(templateName: string, data: Data = newData()): string =
-  if templates.hasKey(templateName):
-    if templates.hasKey("layout"):
-      let layout = readFile(templates["layout"])
-      result = layout.replace(contentTag, readFile(templates[templateName]))
+  NOTE! Known templating bug:
+    - Regex doesn't always match tags as it should. This means that some variables in the template do not get assigned
+      any values. To fix this, in the template, add a few tabs or new lines before the problematic variable.
+
+]#
+
+const contentRE = "\\{\\[\\s*content\\s*\\]\\}"
+const forRE = "\\{\\[\\s*for\\s+(\\w+)\\s+in\\s+([\\w+\\.?]+)\\s*\\]\\}([\\s\\S]*)\\{\\[\\s*end\\s*\\]\\}"
+const templateRE = "\\{\\[\\s*template\\s*(\\S+)\\s*\\]\\}"
+const varRE = "\\{\\[([\\s\\S]*?)\\]\\}"
+
+proc unquote(s: string): string =
+  s.strip(chars = {'"'})
+
+# Checks if the specified 'path' exists in provided JsonNode 'src'.
+# If it does, assign its value to 'dest' and return true. 
+proc dotwalk(src: JsonNode, path: string, dest: var JsonNode): bool =
+  let keys = path.split('.')
+  dest = src
+  result = true
+  for i in 0 .. keys.high:
+    let key = keys[i]
+    if dest.kind == JObject:
+      if dest.hasKey(key):
+        dest = dest[key]
+      else:
+        return false
+    elif dest.kind == JArray:
+      try:
+        let elems = dest.getElems()
+        dest = elems[key.parseInt]
+      except:
+        return false
+
+# Gets the appropriate layout file if one exists.
+# Prioritizes the layout file in the same directory.
+# Then checks parent directories for the file.
+proc getLayout(templateName: string): string =
+  let path = templateName.split( '/' ) 
+  let dirs = path[ 0 .. ^2 ]          
+  var i = dirs.high
+  while i >= 0:
+    let dir = dirs[ 0 .. i ].join( "/" )
+    for file in walkFiles( dir / "*" ):
+      if file.splitFile.name == "layout":
+        return readFile(file)
+    dec(i)
+
+proc getTemplate(templateName: string, templateContent: var string, imported = false): bool =
+  var layout = if imported: "" else: getLayout(templateName)
+  for file in walkFiles(templateName & "*"):
+    if file.splitFile.name == templateName.splitFile.name:
+      templateContent = readFile(file)
+      var match: RegexMatch
+      if find(layout, re(contentRE), match):
+        layout[match.boundaries] = templateContent
+        templateContent = layout
+      return true
+
+proc findAndInsertRegularVariables(doc: string, data: JsonNode): string =
+  result = doc
+  for match in findAll(result, re(varRe)):
+    var slice = match.group(0)[0]
+    let tag = result[slice].strip
+    slice = slice.a - 2 .. slice.b + 2
+    var node: JsonNode
+    if data.dotwalk(tag, node):
+      result[slice] = ($node).unquote
+
+proc findAndInsertForLoops(doc: string, data: JsonNode): string =
+  result = doc
+  for match in findAll(result, re(forRE)):
+    # {[ for [item] in [iterable] ]} [body] {[ end ]}
+    let item = result[match.group(0)[0]]
+    let iterable = result[match.group(1)[0]]
+    let body = result[match.group(2)[0]]
+    # The looped content
+    var forBody: string
+    var elements: JsonNode
+    if data.dotwalk(iterable, elements):
+      for element in elements.getElems:
+        let temp = %* { item: element }
+        forBody &= findAndInsertRegularVariables(body, temp) & '\n'
+        var m: RegexMatch # Inner for-loop
+        if find(forBody, re(forRe), m):
+          forBody = findAndInsertForLoops(forBody, temp)
+      result[match.boundaries] = forBody
+
+proc findAndInsertTemplates(doc: string, data: JsonNode): string =
+  result = doc
+  for match in findAll(result, re(templateRE)):
+    let templateName = templateDirectory / result[match.group(0)[0]]
+    var templateContent: string
+    if getTemplate(templateName, templateContent, true):
+      templateContent = findAndInsertTemplates(templateContent, data)
+      templateContent = findAndInsertRegularVariables(templateContent, data)
+      templateContent = findAndInsertForLoops(templateContent, data)
+      result[match.boundaries] = templateContent
     else:
-      result = readFile(templates[templateName])
-    result = fillTemplateWithData(result, data)
+      echo "Template '$1' not found!".format(templateName)
+
+proc tmplt*(templateName: string, data: JsonNode = newJObject()): string =
+  var templateContent: string
+  if getTemplate(templateDirectory / templateName, templateContent):
+    result = templateContent
+    result = findAndInsertTemplates(result, data)
+    result = findAndInsertRegularVariables(result, data)
+    result = findAndInsertForLoops(result, data)  
   else:
-    logger.log(lvlError, &"Template '{templateName}' does not exist!")
+    echo "Template '$1' not found!".format(templateName)
 
 proc html*(content: string): string = 
   # Let's the browser know that the response should be treated as HTML
@@ -128,22 +196,22 @@ proc respond*(file: UploadFile, httpCode = Http200, headers = newHttpHeaders()):
   headers["Content-Type"] = getContentType(file.ext)
   return (file.content, httpCode, headers)
 
-proc redirect*(path: string, content = "", delay = 0, httpCode = Http303): types.Response =
-  var headers: HttpHeaders
-  if delay == 0:
-    headers = newHttpHeaders([("Location", path)])
-  else:
-    headers = newHttpHeaders([("refresh", &"{delay};url=\"{path}\"")])
-  return (content, httpCode, headers)
+proc redirect*(path: string, content = "", delay = 0, httpCode = Http303): types.Response =  
+  ( content, httpCode,
+    if delay == 0:
+      newHttpHeaders([("location", path)]) 
+    else:
+      newHttpHeaders([("refresh", &"{delay};url=\"{path}\"")])
+  )
 
 proc serve(request: Request, httpCode: HttpCode, content = "", headers = newHttpHeaders()): Future[void] {.async.} =
   await request.respond(httpCode, content, headers)
 
-proc serveError(request: Request, httpCode: HttpCode = Http500, message: string = ""): Future[void] {.async.} =
+proc serveError(request: Request, httpCode: HttpCode = Http500, message = ""): Future[void] {.gcsafe, async.} =
   var content = message
-  if templates.hasKey("error"):
+  if existsFile(templateDirectory / "error.html"):
     var data = newData()
-    data["title"] = "Error"
+    data["title"] = "Internal Server Error"
     data["code"] = $httpCode
     data["message"] = message
     content = tmplt("error", data)
@@ -422,13 +490,7 @@ proc onRequest(request: Request): Future[void] {.gcsafe.} =
 proc runForever*(port: uint = 3000, message: string = "Xander server is up and running!"): void =
   logger.log(lvlInfo, message)
   defer: close(xanderServer)
-  readTemplates(templateDirectory, templates)
   waitFor xanderServer.serve(Port(port), onRequest)
-
-# TODO: Remove this or use this
-proc getServer*(): AsyncHttpServer =
-  #readTemplates(templateDirectory, templates)
-  return xanderServer
 
 proc addRoute*(host = defaultHost, domain = defaultDomain, httpMethod: HttpMethod, route: string, handler: RequestHandler): void =
   xanderRoutes.addRoute(httpMethod, route, handler, host, domain)
@@ -599,11 +661,6 @@ proc serveFiles*(route: string): void =
       else: respond Http404)
   for directory in walkDirs(applicationDirectory & path & "/*"):
     serveFiles(directory)
-
-template onError*(body: untyped): void =
-  errorHandler = proc(request: Request, httpCode: HttpCode): 
-    types.Response = 
-      body
 
 proc fetch*(url: string): string =
   var client = newAsyncHttpClient()

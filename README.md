@@ -57,7 +57,7 @@ To serve a template file:
 # Serve the index page
 respond tmplt("index")
 ```
-The default directory for templates is ```app_dir/templates```, but it can also be changed by calling
+The default directory for templates is ```templates```, but it can also be changed by calling
 ```nim
 setTemplateDirectory("views")
 ```
@@ -69,8 +69,8 @@ By having a ```layout.html``` template one can define a base layout for their pa
     <title>{[title]}</title>
   </head>
   <body>
-    {[%content%]}
-    {[template footer]}
+    {[ content ]}
+    {[ template footer ]}
   </body>
 </html>
 ```

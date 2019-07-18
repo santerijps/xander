@@ -91,6 +91,7 @@ macro withData*(keys: varargs[string], body: untyped): void =
     else: source &= " and"
   # add var declaration(s)
   for v in vars:
+    #TODO: source &= "if data[$1].kind == JArray:\n\t"
     source &= tab & "var $1 = data.get($2)\n".format(v.replace('-', '_'), tools.quote(v))
   # add body
   for line in repr(body).splitLines:

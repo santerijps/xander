@@ -118,6 +118,7 @@ proc nimCompile(fileName: string): CmdResponse =
 
 proc runProject(fileName = "app.nim"): void =
   if existsFile(fileName):
+    discard execCmd("rm ." / fileName.splitFile.name)
     discard nimCompile(fileName)
     discard execCmd("." / fileName.splitFile.name)
   else:
