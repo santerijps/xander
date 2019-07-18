@@ -22,7 +22,7 @@ More examples can be found in the ```examples``` folder.
 xander injects variables for the developer to use in request handlers. These variables are:
 
 - request, the http request
-- data, contains data sent from the client such as get parameters and form data
+- data, contains data sent from the client such as get parameters and form data (shorthad for JsonNode)
 - headers, for setting response headers (see request.headers for request headers)
 - cookies, for accessing request cookies and setting response cookies
 - session, client specific session variables
@@ -74,7 +74,73 @@ By having a ```layout.html``` template one can define a base layout for their pa
   </body>
 </html>
 ```
-In the example above, ```{[title]}``` is a user defined variable, whereas ```{[%content%]}``` is a xander defined variable, that contains the contents of a template file. To include your own templates, use the ```template``` keyword ```{[template my-template]}```. You can also include templates that themselves include other templates.
+In the example above, ```{[title]}``` is a user defined variable, whereas ```{[ content ]}``` is a xander defined variable, that contains the contents of a template file. To include your own templates, use the ```template``` keyword ```{[template my-template]}```. You can also include templates that themselves include other templates.
+
+```html
+<!-- templates/footer.html -->
+<footer>
+  
+  <a href="/">Home</a>
+
+  <!-- templates/contact-details.html -->
+  {[ template contact-details ]}
+
+</footer>
+```
+You can also seperate templates into directories. The closest layout file will be used; if none is found in the same directory, parent directories will be searched.
+```
+appDir/
+  app.nim
+  ...
+  templates/
+    
+    index.html    # Root page index
+    layout.html   # Root page layout
+
+    register/
+      index.html  # Register page index
+                  # Root page layout 
+
+    admin/
+      index.html  # Admin page index
+      layout.html # Admin page layout
+
+    normie/
+      index.html  # Client page index
+      layout.html # Client page layout
+    
+```
+
+### For loops
+For loops are supported in Xander templates. This is still very much a work in progress.
+```html
+<body>
+
+  <table>
+    <tr>
+      <th>Name</th>
+      <th>Age</th>
+      <th>Hobbies</th>
+    </tr>
+
+    {[ for person in people ]}
+    <tr>
+      <td>{[ person.name ]}</td>
+      <td>{[ person.age ]}</td>
+      <td>
+        <ul>
+          {[ for hobby in person.hobbies ]}
+          <li>{[ hobby ]}</li>
+          {[ end ]}
+        </ul>
+      </td>
+    </tr>
+    {[ end ]}
+
+  </table>
+
+</body>
+```
 
 ### Template variables
 xander provides a custom type ```Data```, which is shorthand for ```JsonNode```, and it also adds some functions to make life easier. To initialize it, one must use the ```newData()``` func. In the initialized variable, one can add key-value pairs
@@ -110,14 +176,41 @@ get "/countries/:country/people/:person":
 ## Subdomains
 To add a subdomain to your application simply do the following:
 ```nim
-# Matches api.localhost/
-get "api./":
-  respond newData("message", "hello")
+subdomain "api":
 
-# Matches api.localhost/people
-get "api./people":
-  let people = @["adam", "beth", "charles", "david", "emma", "fiona"]
-  respond newData("people", people)
+  # Matches api.mysite.com
+  get "/":
+    respond %* {
+      "status": "OK",
+      "message": "Hello World!"
+    }
+
+  # Matches api.mysite.com/people
+  get "/people":
+    let people = @["adam", "beth", "charles", "david", "emma", "fiona"]
+    respond newData("people", people)
+```
+
+## Hosts
+Xander features the ```host``` macro, which makes it possible to run seperate applications depending on the ```hostname``` of the request header.
+```nim
+# Travel Blog
+host "travel-blog.com":
+  get "/":
+    respond "Welcome to my travel blog!"
+
+# Tech page
+host "cool-techy-site.com":
+
+  get "/":
+    respond "Welcome to my cool techy site!"
+  
+  subdomain "api":
+    get "/":
+      respond %* {
+        "status": "OK",
+        "message": "Welcome"
+      }
 ```
 
 ## TODO
@@ -125,6 +218,4 @@ get "api./people":
 - Setting restrictions
 - Error handling
 - Code refactoring
-- Templates
 - Web sockets
-- Subdomains
