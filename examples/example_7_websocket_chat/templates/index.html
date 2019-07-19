@@ -1,0 +1,43 @@
+<h1>Xander Chat</h1>
+
+<textarea
+  class="form-control"
+  readonly="true"
+  style=
+  "height: 350px;
+  background: white;
+  user-select: text;">
+@ Welcome to the chat room!
+</textarea>
+
+<br>
+
+<input
+  type="text"
+  placeholder="Message (Press 'enter' to send)"
+  class="form-control">
+
+<script>
+
+  (() => {
+
+    let url = `ws://${window.location.host}/ws`
+    let socket = new WebSocket( url )
+    let textarea = document.querySelector( "textarea" )
+    let input = document.querySelector( "input" )
+
+    input.onkeydown = event => {
+      if ( event.key === "Enter" && input.value.length > 0 && socket.readyState == 1 ) {
+        socket.send( input.value )
+        input.value = ""
+      }
+    }
+
+    socket.onmessage = event => {
+      textarea.value = textarea.value + event.data + "\n"
+      textarea.scrollTop = textarea.scrollHeight
+    }
+    
+  })()
+
+</script>

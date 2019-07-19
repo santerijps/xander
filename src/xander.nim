@@ -25,6 +25,7 @@ import # Local imports
   xander/contenttype,
   xander/tools,
   xander/types,
+  xander/ws,
   xander/zip/zlib_modified
 
 export # TODO: What really needs to be exported???
@@ -36,7 +37,8 @@ export # TODO: What really needs to be exported???
   os,
   tables,
   types,
-  tools
+  tools,
+  ws
 
 randomize()
 
@@ -333,9 +335,20 @@ proc isValidGetPath(url, kind: string, params: var Data): bool =
 proc hasSubdomain(host: string, subdomain: var string): bool =
   let domains = host.split('.')
   let count = domains.len
-  if count > 1: # ["api", "mysite", "com"] ["mysite", "com"] ["api", "localhost"]
+  if count > 1: # ["api", "mysite", "com"] ["mysite", "com"] ["api", "localhost"] ["192", "168", "1", "43"]
     if count == 3 and domains[0] == "www":
-      result = false  
+      return false  
+    elif count == 4:
+      var isIpAddress = true
+      for d in domains:
+        try:
+          discard parseInt(d)
+        except:
+          isIpAddress = false
+          break 
+      if isIpAddress:
+        subdomain = defaultDomain
+        return true
     elif (count >= 3) or (count == 2 and domains[1].split(":")[0] == "localhost"):
       subdomain = domains[0]
       result = true
@@ -448,12 +461,28 @@ proc getHostAndDomain(request: Request): tuple[host, domain: string] =
 type RequestHookProc* = proc(r: Request): Future[void] {.gcsafe.}
 var requestHook* {.threadvar.} : RequestHookProc # == nil
 
+# EXPERIMENTAL
+type WebSocketHandler* = proc(ws: WebSocket): Future[void] {.gcsafe.}
+var websockets {.threadvar.} : Table[string, WebSocketHandler]
+websockets = initTable[string, WebSocketHandler]()
+
+proc handleWebSockets(request: Request): Future[void] {.async,gcsafe.} =
+  if websockets.hasKey(request.url.path):
+    try:
+      var ws = await newWebSocket(request)
+      await websockets[request.url.path](ws)
+    except:
+      discard
+
 # TODO: Check that request size <= server max allowed size
 # Called on each request to server
 proc onRequest(request: Request): Future[void] {.async,gcsafe.} =
   # Experimental: Request Hook
   if requestHook != nil:
     await requestHook(request)
+  # Experimental: Built-in Web Sockets
+  await handleWebSockets(request)
+  # Initialize variables
   var (data, headers, cookies, session, files) = newRequestHandlerVariables()
   var (host, domain) = getHostAndDomain(request)
   if xanderRoutes.existsMethod(request.reqMethod, host, domain):
@@ -645,6 +674,16 @@ macro host*(host, body: untyped): void =
   let host = repr(host).unquote.toLower
   let body = reformatHostCode(host, repr(body))
   parseStmt(body)
+
+proc addWebSocketProc*(path: string, p: WebSocketHandler): void =
+  websockets[path] = p
+
+macro websocket*(path, body: untyped): void =
+  var src = "addWebSocketProc($1, proc(ws: WebSocket) {.async.} =\n".format(repr(path))
+  for line in repr(body).split( newLine ):
+    src &= tab & line & newLine
+  src &= ")"
+  parseStmt(src)
 
 proc printServerStructure*(): void =
   logger.log(lvlInfo, xanderRoutes)

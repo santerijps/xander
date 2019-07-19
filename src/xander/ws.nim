@@ -1,6 +1,7 @@
-#[
-  https://github.com/treeform/ws
-]#
+# !!
+# All credit to treeforms's websocket library
+# https://github.com/treeform/ws
+# !!
 
 import httpcore, httpclient, asynchttpserver, asyncdispatch, nativesockets, asyncnet,
   strutils, streams, random, std/sha1, base64, uri, strformat
