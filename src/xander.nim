@@ -109,7 +109,7 @@ proc getLayout(templateName: string): string =
   let path = templateName.split( '/' ) 
   let dirs = path[ 0 .. ^2 ]          
   var i = dirs.high
-  while i >= 0:
+  while i > -1:
     let dir = dirs[ 0 .. i ].join( "/" )
     for file in walkFiles( dir / "*" ):
       if file.splitFile.name == "layout":
@@ -444,9 +444,16 @@ proc getHostAndDomain(request: Request): tuple[host, domain: string] =
   else:
     parseHostAndDomain(request)
 
+# EXPERIMENTAL
+type RequestHookProc* = proc(r: Request): Future[void] {.gcsafe.}
+var requestHook* {.threadvar.} : RequestHookProc # == nil
+
 # TODO: Check that request size <= server max allowed size
 # Called on each request to server
-proc onRequest(request: Request): Future[void] {.gcsafe.} =
+proc onRequest(request: Request): Future[void] {.async,gcsafe.} =
+  # Experimental: Request Hook
+  if requestHook != nil:
+    await requestHook(request)
   var (data, headers, cookies, session, files) = newRequestHandlerVariables()
   var (host, domain) = getHostAndDomain(request)
   if xanderRoutes.existsMethod(request.reqMethod, host, domain):
@@ -483,8 +490,8 @@ proc onRequest(request: Request): Future[void] {.gcsafe.} =
         setResponseCookies(response, cookies)
         # Put headers into response
         setResponseHeaders(response, headers)
-        return request.respond(response.httpCode, response.body, response.headers)
-  serveError(request, Http404)
+        await request.respond(response.httpCode, response.body, response.headers)
+  await serveError(request, Http404)
 
 # TODO: Check port range
 proc runForever*(port: uint = 3000, message: string = "Xander server is up and running!"): void =
