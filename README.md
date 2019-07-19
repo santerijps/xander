@@ -5,6 +5,7 @@ An easy to use web application development library and framework.
 ```nimble install https://github.com/sunjohanday/xander.git```
 
 [OPTIONAL] If you want to install Xander CLI
+
 ```~/.nimble/pkgs/xander-[VERSION]/xander/install.sh```
 
 A basic example:
@@ -212,10 +213,64 @@ host "cool-techy-site.com":
         "message": "Welcome"
       }
 ```
+## Web Sockets
+Xander uses the *ws* library provided by [https://github.com/treeform/ws](https://github.com/treeform/ws).
+```nim
+get "/":
+  respond tmplt("index")
 
+# echo web socket server
+websocket "/ws":
+  # the websocket variable is injected as 'ws'
+  while ws.readyState == Open:
+    let packet = await ws.receiveStrPacket()
+    await ws.send(packet)
+```
+## Request Hook
+As Xander's request handlers only prepare the response to be sent to the client, a way for accessing the *onRequest* procedure call was added.
+
+Xander exports a variable called *requestHook*, which the programmer can asign values to. The value should be a anonymous proc as specified below.
+```nim
+# app.nim
+requestHook = proc(r: Request) {.async.} =
+  # Do stuff with the request.
+  # Nothing actually needs to be done.
+  # The requestHook procedure is run as soon as
+  # the request is caught by asynchttpserver.
+  #
+  # You could basically make your entire app here.
+  discard
+```
+```nim
+# app.nim
+import xander
+
+# the request hook is essentially the same as
+# the 'cb' proc of asynchttpserver.serve, with
+# the exception that no responding needs to be done
+# (as Xander does it anyways)
+requestHook = proc(r: Request) {.async.} =
+  await r.respond( Http200, "Hello World!" )
+
+runForever(3000)
+```
+The *requestHook* can be used with regular Xander request handlers as per usual. 
+```nim
+import xander
+
+get "/":
+  respond tmplt("index")
+
+requestHook = proc(r: Request) {.async.} =
+  var ws = await newWebsocket(req)
+  await ws.sendPacket("Welcome to my echo server!")
+  while ws.readyState == Open:
+    let packet = await ws.receiveStrPacket()
+    await ws.send(packet)
+
+runForever(3000)
+```
 ## TODO
-- Add request headers to the ```headers``` variable
 - Setting restrictions
-- Error handling
 - Code refactoring
-- Web sockets
+- Web sockets integration with *host* macro. Web sockets are currently always in global scope.
