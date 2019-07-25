@@ -274,7 +274,9 @@ proc parseForm(body: string): JsonNode =
   let urlDecoded = decodeUrl(body)
   let kvPairs = urlDecoded.split("&")
   for kvPair in kvPairs:
-    let kvArray = kvPair.split("=")
+    # Assuming the key doesn't contain equals signs,
+    # but the value does, split once
+    let kvArray = kvPair.split("=", 1)
     var key = kvArray[0]
     let value = kvArray[1]
     if "[]" in key:
