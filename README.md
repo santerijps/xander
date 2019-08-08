@@ -1,14 +1,17 @@
-# xander (work in progress)
-An easy to use web application development library and framework.
+# Xander
+Xander is an easy to use web application development library and framework for the [Nim programming language](https://nim-lang.org). Nim is a statically typed language with a Python-like syntax and a powerful macro system, something Xander uses greatly to its advantage.
 
 ## Installation
-```nimble install https://github.com/sunjohanday/xander.git```
+The easiest way to install Xander is to use [Nimble](https://github.com/nim-lang/nimble), which is bundled with the Nim installation.
+```nimble install https://github.com/sunjohanday/Xander.git```
 
-[OPTIONAL] If you want to install Xander CLI
+Otherwise you can download this git repository and ```import xander``` with the appropriate relative file path, e.g. ```import ../xander/xander```
 
-```~/.nimble/pkgs/xander-[VERSION]/xander/install.sh```
+**OPTIONAL** If you wish to install Xander CLI, enter the following line on the command line (on Linux):
+```~/.nimble/pkgs/Xander-0.6.0/Xander/install.sh```
+You can manually perform the tasks the CLI ```install.sh``` script performs. Simply compile the downloaded ```xander.nim``` file and run the executable.
 
-A basic example:
+A basic Xander-app example:
 ```nim
 import xander
 
@@ -20,7 +23,7 @@ runForever(3000)
 More examples can be found in the ```examples``` folder.
 
 ## The Gist of It
-xander injects variables for the developer to use in request handlers. These variables are:
+Xander injects variables for the developer to use in request handlers. These variables are:
 
 - request, the http request
 - data, contains data sent from the client such as get parameters and form data (shorthad for JsonNode)
@@ -52,7 +55,7 @@ serveFiles "/public"
 ```
 
 ## Templates
-xander provides support for templates, although it is very much a work in progress.
+Xander provides support for templates, although it is very much a work in progress.
 To serve a template file:
 ```nim
 # Serve the index page
@@ -75,7 +78,7 @@ By having a ```layout.html``` template one can define a base layout for their pa
   </body>
 </html>
 ```
-In the example above, ```{[title]}``` is a user defined variable, whereas ```{[ content ]}``` is a xander defined variable, that contains the contents of a template file. To include your own templates, use the ```template``` keyword ```{[template my-template]}```. You can also include templates that themselves include other templates.
+In the example above, ```{[title]}``` is a user defined variable, whereas ```{[ content ]}``` is a Xander defined variable, that contains the contents of a template file. To include your own templates, use the ```template``` keyword ```{[template my-template]}```. You can also include templates that themselves include other templates.
 
 ```html
 <!-- templates/footer.html -->
@@ -88,7 +91,7 @@ In the example above, ```{[title]}``` is a user defined variable, whereas ```{[ 
 
 </footer>
 ```
-You can also seperate templates into directories. The closest layout file will be used; if none is found in the same directory, parent directories will be searched.
+You can also seperate templates into directories. The nearest layout file will be used: if none is found in the same directory, parent directories will be searched.
 ```
 appDir/
   app.nim
@@ -144,7 +147,7 @@ For loops are supported in Xander templates. This is still very much a work in p
 ```
 
 ### Template variables
-xander provides a custom type ```Data```, which is shorthand for ```JsonNode```, and it also adds some functions to make life easier. To initialize it, one must use the ```newData()``` func. In the initialized variable, one can add key-value pairs
+Xander provides a custom type ```Data```, which is shorthand for ```JsonNode```, and it also adds some functions to make life easier. To initialize it, one must use the ```newData()``` func. In the initialized variable, one can add key-value pairs
 ```nim
 var vars = newData()
 vars["name"] = "Alice"

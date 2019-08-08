@@ -144,7 +144,7 @@ setControlCHook(proc() {.noconv.} =
 let params = commandLineParams()
 
 if params.len == 0:
-  echo "No command provided."
+  echo """No command provided. Commands are 'new', 'run' and 'listen'."""
 
 else:
   case params[0]:
@@ -232,4 +232,4 @@ else:
       updateXander()
     
     else:
-      echo "Bad command! Commands are 'new' and 'run'."
+      echo "Bad command! Commands are 'new', 'run' nd 'listen'."
