@@ -3,12 +3,15 @@ Xander is an easy to use web application development library and framework for t
 
 ## Installation
 The easiest way to install Xander is to use [Nimble](https://github.com/nim-lang/nimble), which is bundled with the Nim installation.
+
 ```nimble install https://github.com/sunjohanday/Xander.git```
 
 Otherwise you can download this git repository and ```import xander``` with the appropriate relative file path, e.g. ```import ../xander/xander```
 
 **OPTIONAL** If you wish to install Xander CLI, enter the following line on the command line (on Linux):
+
 ```~/.nimble/pkgs/Xander-0.6.0/Xander/install.sh```
+
 You can manually perform the tasks the CLI ```install.sh``` script performs. Simply compile the downloaded ```xander.nim``` file and run the executable.
 
 A basic Xander-app example:
