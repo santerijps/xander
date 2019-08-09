@@ -277,6 +277,7 @@ requestHook = proc(r: Request) {.async.} =
 runForever(3000)
 ```
 ## TODO
-- Setting restrictions
-- Code refactoring
-- Web sockets integration with *host* macro. Web sockets are currently always in global scope.
+- Expanding templates with if-statements
+- Windows optimization
+- HTTPS, this requires a look into **asyncnet** and/or **net**
+- Redoing the server architecture without **asynchttpserver**
